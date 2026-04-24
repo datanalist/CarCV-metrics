@@ -1,0 +1,27 @@
+model:
+  baseline:
+    path: models/vehiclemakenet_pruned_onnx_v1.1.0/resnet18_pruned.onnx
+    labels: models/vehiclemakenet_pruned_onnx_v1.1.0/labels.txt
+    n_classes: 20
+  finetuned:
+    path: models/vmn_vmmrdb_ymad_105c/model.onnx
+    labels: models/vmn_vmmrdb_ymad_105c/labels.txt
+    n_classes: 105
+  input_size: [224, 224]
+  providers: [CUDAExecutionProvider, CPUExecutionProvider]
+
+data:
+  dataset_path: data/external/ymad_cars
+  images_index: data/external/ymad_cars/images_index.jsonl
+  batch_size: 128
+  num_workers: 4
+
+evaluation:
+  metrics: [top1, top3, confusion_matrix, per_class_f1]
+  target_top1: 0.90
+  target_top3: 0.97
+  save_predictions: true
+  output_dir: results/vehiclemakenet_eval
+  figures_dir: notebooks/vehiclemakenet_eval
+  max_cm_classes: 30
+  error_examples_n: 12
