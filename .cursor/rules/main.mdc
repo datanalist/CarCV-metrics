@@ -1,0 +1,128 @@
+---
+description: "Глобальные правила работы над проектом CarCV — агенты, маршрутизация задач, процесс, запреты"
+alwaysApply: true
+---
+
+## Проект
+**CarCV (CARS)** — edge AI для распознавания авто и номеров на NVIDIA Jetson.  
+Стек: DeepStream, TensorRT, ONNX Runtime, Python, C, SQLite.
+
+## Ключевые документы
+| Документ | Описание |
+|----------|----------|
+| `@docs/rules/task.md` | Текущая задача (читай первым) |
+| `@docs/rules/plan.md` | План работы (веди актуальным) |
+| `@docs/architecture.md` | Архитектура системы |
+| `@docs/system-design/ML_System_Design_Document.md` | System Design (источник истины) |
+| `@docs/proto-subagents/index.md` | Спецификации агентов |
+
+## Структура
+| Папка | Содержимое |
+|-------|------------|
+| `data/` | Датасеты |
+| `models/` | ONNX/TensorRT модели |
+| `notebooks/` | Эксперименты |
+| `scripts/` | Утилиты |
+| `configs/` | DeepStream конфигурации |
+| `results/` | Результаты экспериментов |
+| `docs/` | Документация |
+
+## CLI
+```bash
+uv add <pkg>              # Зависимости
+uv run <script>           # Запуск
+ruff format && ruff check # Форматирование + линтинг
+```
+
+---
+
+## Команда агентов
+
+Проект реализуется группой специализированных агентов. Каждая задача маршрутизируется к нужному агенту.
+
+### Матрица маршрутизации
+
+| Задача | Агент (skill) | Приоритет |
+|--------|---------------|-----------|
+| C-код pipeline, GStreamer, pad probes, NVMM crops | `agent-cars-gstreamer-dev` | 🔴 Critical |
+| DeepStream/TRT конфиги, конверсия моделей, FPS/latency | `agent-cars-edge-ai` | 🔴 Critical |
+| Python inference (OCR, color, face), REST API, file watcher | `agent-cars-python-backend` | 🔴 Critical |
+| Схема БД, SQLite PRAGMA, FAISS, миграции | `agent-cars-dba` | 🔴 Critical |
+| Датасеты, augmentation, annotation, calibration | `agent-data-engineer` | 🟡 High |
+| Systemd, Prometheus, Grafana, cron, deployment | `agent-cars-devops` | 🟡 High |
+| Unit/integration/perf тесты, acceptance CP1-CP6 | `agent-cars-test-engineer` | 🟡 High |
+| Web UI, лента детекций, паттерны, face search UI | `agent-cars-frontend` | 🟢 Medium |
+| Auth, HTTPS, RBAC, rate limiting, hardening | `agent-cars-security` | 🟢 Medium |
+| ML модели (обучение, оценка, fine-tune) | `agent-ml-experimenter` / `agent-cv-engineer` | По задаче |
+| Документация (отчёты, architecture.md, README) | `agent-technical-writer-ml` | По задаче |
+| Планирование и декомпозиция | `agent-task-planner` | По задаче |
+
+### Правила маршрутизации
+
+1. **Определи домен задачи** перед началом работы — сверься с матрицей выше
+2. **Один агент — одна ответственность**: не смешивай домены (например, C-код pipeline и Python API)
+3. **Граница: конфиги vs код** — `agent-cars-edge-ai` пишет конфиги `.txt` и конвертирует модели; `agent-cars-gstreamer-dev` пишет C-код приложения
+4. **Граница: схема vs использование** — `agent-cars-dba` проектирует схему и оптимизирует запросы; `agent-cars-python-backend` использует БД через готовые запросы
+5. **Cross-cutting задачи** (затрагивают >1 агента) — декомпозируй через `agent-task-planner`, выполняй последовательно каждым агентом
+6. **Зависимости между агентами:**
+```
+agent-cars-gstreamer-dev → agent-cars-edge-ai (использует конфиги)
+agent-cars-gstreamer-dev → agent-cars-dba (инициализирует схему)
+agent-cars-python-backend → agent-cars-dba (читает/пишет my.db)
+agent-cars-python-backend → agent-cars-edge-ai (использует модели)
+agent-cars-frontend → agent-cars-python-backend (REST API)
+agent-cars-security → agent-cars-python-backend (auth middleware)
+agent-cars-test-engineer → все (тестирует всё)
+agent-cars-devops → все (деплоит всё)
+agent-data-engineer → agent-cars-edge-ai (датасеты для fine-tuning)
+```
+
+---
+
+## Процесс работы
+
+1. `.` — выполнить пункт "1. Планирование"
+2. Оповестить и дождаться команды `***`
+3. После `***` — выполнять пункты из плана, маршрутизируя каждый к нужному агенту
+
+### 1. Планирование
+1. Изучи System Design Document `@docs/system-design/ML_System_Design_Document.md` для полного понимания предназначения и архитектуры проекта
+2. Изучи глобальную задачу → `@docs/rules/task.md`
+3. `agent-task-planner`: декомпозиция `@docs/rules/task.md` → `@docs/rules/plan.md`
+4. Для каждого пункта плана укажи ответственного агента
+
+### 2. Реализация
+- Определи агента по матрице маршрутизации
+- Прочитай SKILL.md агента перед вызовом
+- ПРОАКТИВНО делегируй задачи агентам через Task tool
+- Используй **параллельные** вызовы агентов для независимых задач
+
+### 3. Документация (`agent-technical-writer-ml`)
+- Новый компонент → обновить `@docs/architecture.md`, создать `docs/guides/{name}.md`
+- Архитектура изменилась >30% → обновить `./README.md`
+- Нет документации к датасету → написать в `docs/about_datasets/{name}.md`
+- Эксперимент завершён → отчёт в `docs/experiments/`
+
+### 4. Завершение
+Все пункты плана выполнены → уведомить КАПСОМ.
+
+---
+
+## Временный код
+Код не для продакшена (скачивание данных, утилиты, тесты гипотез):
+- Лаконичный, без комментариев и docstrings
+- Удалять после выполнения
+
+## Запреты
+- **md-файлы** — только указанные в документации
+- **Зависимости** — только после согласования
+- **Переусложнение** — минимальное решение
+- **Домыслы** — не придумывать того, чего нет
+- **Git** — без разрешения
+- **task.md** — НЕ ИЗМЕНЯЙ ЭТОТ ФАЙЛ. Он — твоё руководство
+- **/models** — НЕ удаляй ничего из этого каталога
+- **Удаление** — ВСЕГДА СПРАШИВАЙ РАЗРЕШЕНИЕ
+- **Смешивание доменов** — не выполняй задачу агента, который за это отвечает, руками. Делегируй
+
+## Язык
+Отвечай на русском.

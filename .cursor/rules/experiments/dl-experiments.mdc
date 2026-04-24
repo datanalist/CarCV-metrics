@@ -1,0 +1,119 @@
+---
+description: Правила проведения Deep Learning экспериментов в проекте CarCV
+globs: notebooks/**,scripts/**
+alwaysApply: false
+---
+
+# DL-эксперименты
+
+## Структура эксперимента
+
+| Артефакт | Путь |
+|----------|------|
+| Notebook | `notebooks/{experiment-name}.ipynb` |
+| Графики/картинки | `notebooks/{experiment-type}/{experiment-name}/images/` |
+| Вспомогательный код | `scripts/{task-type}/{task-name}/` |
+| Данные | `data/` |
+| Модели | `models/` |
+
+## Работа с Jupyter — ТОЛЬКО MCP-инструменты
+
+- `add_cell` — создание ячеек
+- `edit_cell` — редактирование
+- `execute_cell` — запуск
+- `read_output_of_cell` — чтение результатов
+- ВСЕ результаты (текст, метрики, графики) должны быть в notebook
+
+## GPU и производительность
+
+- **ВСЕГДА** используй GPU (полная нагрузка: оба GPU) и/или multiprocessing
+- Mixed precision (`torch.cuda.amp`) при обучении и инференсе
+- `DataParallel` / `DistributedDataParallel` для multi-GPU
+- Gradient accumulation для больших batch sizes
+- Оптимальный `num_workers` в DataLoader (обычно 4-8 на GPU)
+- Профилируй узкие места, особенно data loading
+- Не перегружай RAM, оптимизируй и АКТИВНО используй кэш датасетов
+
+## Структура notebook-эксперимента
+
+1. **Заголовок** — цель, гипотеза, используемая модель/датасет
+2. **Загрузка данных** — с документацией по датасету из `docs/about_datasets/`
+3. **Анализ/препроцессинг** — статистики, распределения, визуализации
+4. **Модель/инференс** — загрузка, конфигурация, запуск
+5. **Метрики** — количественная оценка (таблицы + графики)
+6. **Анализ ошибок** — примеры неправильных предсказаний, edge cases
+7. **Выводы** — краткое резюме результатов
+
+## Метрики
+
+Целевые пороговые значения — см. `edge-ai.mdc`.
+
+## Визуализация
+
+- Confusion matrix, per-class метрики, примеры ошибок — обязательны
+- Графики сохраняй в `notebooks/{experiment-name}/`
+- Используй `matplotlib`/`seaborn`, подписывай оси и заголовки
+- Для bbox: визуализируй с track ID и classification labels
+
+## Анализ ошибок
+
+- Всегда анализируй false positives и false negatives
+- Проверяй edge cases: ночь, дождь/снег, motion blur, нестандартные углы
+- Показывай примеры worst-case предсказаний в notebook
+
+## Управление конфигурацией — Hydra (обязательно)
+
+Все эксперименты с параметрами используют **Hydra** для управления конфигурацией.
+
+### Структура
+
+```
+configs/
+  experiment/
+    {experiment-name}.yaml   # конфиг эксперимента
+```
+
+### Правила
+
+- **Все гиперпараметры** (lr, batch_size, epochs, threshold и т.д.) — только в yaml-конфиге, не в коде
+- Запуск: `uv run python scripts/{task}/train.py` (Hydra подхватывает конфиг автоматически)
+- Override из CLI: `uv run python scripts/{task}/train.py model.lr=0.001 data.batch_size=32`
+- Multirun для grid search: `uv run python scripts/{task}/train.py -m model.lr=0.001,0.0001 data.batch_size=16,32`
+- Hydra автоматически сохраняет конфиг и логи в `outputs/{date}/{time}/`
+- В notebook-экспериментах — инициализировать через `hydra.initialize` + `hydra.compose`
+
+### Пример конфига
+
+```yaml
+# configs/experiment/vehiclemakenet_eval.yaml
+model:
+  path: models/vehiclemakenet.onnx
+  confidence_threshold: 0.5
+  top_k: 3
+
+data:
+  dataset_path: data/vmmrdb
+  batch_size: 64
+  num_workers: 4
+
+evaluation:
+  metrics: [top1, top3, confusion_matrix]
+  save_predictions: true
+  output_dir: results/vehiclemakenet_eval
+```
+
+## Код
+
+- PyTorch — основной фреймворк
+- PEP 8, type hints, описательные имена переменных
+- Вспомогательный `.py` код — лаконичный, без docstrings (временный)
+- Удалять временный код после завершения эксперимента
+- Тяжёлые вычисления выноси в `.py` и запускай через `uv run`
+
+## Датасеты
+
+- Перед использованием нового датасета — создай `docs/about_datasets/{name}.md`
+- Изучи существующую документацию по датасету перед экспериментом
+- Данные только в `data/`, модели только в `models/`
+- СТАРАЙСЯ всю предобработку датасета сделать в отложенном режиме на GPU. ОБЯЗАТЕЛЬНО кешируй датасет
+- Сдели за переполнением и своевременной очиствой RAM при загрузке датасета
