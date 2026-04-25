@@ -1,13 +1,17 @@
 # CARS Model Evaluation Project
 
+## Описание проекта
+- Изучи в docs/system-design/ML_System_Design_Document.md
+
 ## Окружение
 - GPU: NVIDIA (проверить через `nvidia-smi`)
 - Python: 3.10+, venv в ./venv
-- Данные валидации: /data/validation/
-- Модели: /models/
+- Менеджер зависимостей: uv
+- Данные валидации: скачиваются под задачу (смотри инструкцию в docs/rules/task.md)
+- Модель: скачиваются под задачу (смотри инструкцию в docs/rules/task.md)
 
 ## Текущая задача
-Валидация ML-моделей для бортовой системы CARS.
+- Описана в docs/rules/task.md
 
 ## Модели для валидации на этом сервере
 - TrafficCamNet (ResNet-18 pruned) — primary detector
