@@ -1,7 +1,20 @@
 # CARS Model Evaluation Project
 
 ## Описание проекта
-- Изучи в docs/system-design/ML_System_Design_Document.md
+
+**CARS (Computer Automotive Recognition System)** — бортовая система видеоаналитики на NVIDIA Jetson Orin Nano 8GB для автономного распознавания транспортных средств в реальном времени без подключения к облаку.
+
+**Пайплайн:** GStreamer/DeepStream (C ~2400 LOC) + Python-сервис (~600 LOC)
+- **PGIE:** TrafficCamNet (ResNet-18 pruned, TensorRT FP16, 960×544) — детекция ТС
+- **SGIE×4:** VehicleMakeNet (20 марок), VehicleTypeNet (6 типов), LPDNet, FaceDetect
+- **OCR:** LPR_STN_PRE_POST.onnx (STN+LSTM+CTC, русский алфавит, 188×48)
+- **Цвет:** bae_model_f3.onnx (ResNet, 15 цветов, 384×384)
+- **Хранение:** SQLite (my.db → final.db) + BMP-кропы на NVMe SSD
+- **API:** REST HTTP на порту 8080 + Web UI
+
+**Целевые характеристики:** ≥30 FPS @ 1080p, latency <50ms, power <25W
+
+**Применение:** контроль доступа на объекты, мониторинг парковки, патрульные автомобили, логистика.
 
 ## Окружение
 - GPU: NVIDIA (проверить через `nvidia-smi`)
