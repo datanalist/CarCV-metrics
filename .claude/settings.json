@@ -1,18 +1,5 @@
 {
-  "plugins": {
-    "marketplaces": [
-      {
-        "name": "claude-plugins-official",
-        "source": "github",
-        "repo": "anthropics/claude-plugins-official",
-        "installLocation": "/home/vallo/.claude/plugins/marketplaces/claude-plugins-official"
-      },
-      {
-        "name": "superpowers-marketplace",
-        "source": "github",
-        "repo": "obra/superpowers-marketplace",
-        "installLocation": "/home/vallo/.claude/plugins/marketplaces/superpowers-marketplace"
-      }
-    ]
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true
   }
 }
