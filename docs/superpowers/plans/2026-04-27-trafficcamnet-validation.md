@@ -1167,7 +1167,7 @@ print("Summary updated")
 **Files:**
 - Create: `notebooks/eval_trafficcamnet_analysis.ipynb`
 
-- [ ] **Step 1: Write Jupyter notebook with full pipeline**
+- [x] **Step 1: Write Jupyter notebook with full pipeline**
 
 (Notebook structure with cells):
 
@@ -1290,7 +1290,7 @@ for key, met in results['target_met'].items():
     print(f"  {key}: {'✓' if met else '✗'}")
 ```
 
-- [ ] **Step 2: Save notebook as ipynb file**
+- [x] **Step 2: Save notebook as ipynb file**
 
 Can be done via Jupyter UI or nbformat library:
 ```python
