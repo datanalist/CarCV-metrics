@@ -31,6 +31,7 @@ from tqdm import tqdm
 from utils.batch_data_loader import BDD100KBatchLoader
 from utils.batch_inference import BatchInferenceEngine
 from utils.metrics import COCOMetricsComputer, ConfidenceStats
+from utils.adaptive_batch_size import AdaptiveBatchSize
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,11 +72,17 @@ def evaluate(config_path: str) -> Dict:
     # Resolve batch size: "auto" calls AdaptiveBatchSize().calculate()
     raw_batch_size = batch_cfg['batch_size']
     if raw_batch_size == 'auto':
-        from utils.adaptive_batch_size import AdaptiveBatchSize
         batch_size = AdaptiveBatchSize().calculate()
+        if batch_size == 64:
+            logger.warning("AdaptiveBatchSize returned minimum (64) — GPU may not be available")
         logger.info(f"Adaptive batch size calculated: {batch_size}")
     else:
-        batch_size = int(raw_batch_size)
+        try:
+            batch_size = int(raw_batch_size)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(
+                f"Config batch.batch_size must be an integer or 'auto', got: {raw_batch_size!r}"
+            ) from exc
 
     # Validate file existence before processing
     assert Path(model_cfg['local_path']).exists(), f"Model not found: {model_cfg['local_path']}"
