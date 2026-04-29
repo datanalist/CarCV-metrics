@@ -68,6 +68,15 @@ def evaluate(config_path: str) -> Dict:
     batch_cfg = config['batch']
     out_cfg = config['artifacts']
 
+    # Resolve batch size: "auto" calls AdaptiveBatchSize().calculate()
+    raw_batch_size = batch_cfg['batch_size']
+    if raw_batch_size == 'auto':
+        from utils.adaptive_batch_size import AdaptiveBatchSize
+        batch_size = AdaptiveBatchSize().calculate()
+        logger.info(f"Adaptive batch size calculated: {batch_size}")
+    else:
+        batch_size = int(raw_batch_size)
+
     # Validate file existence before processing
     assert Path(model_cfg['local_path']).exists(), f"Model not found: {model_cfg['local_path']}"
     assert Path(data_cfg['local_ann_json']).exists(), f"Annotations not found: {data_cfg['local_ann_json']}"
@@ -90,7 +99,7 @@ def evaluate(config_path: str) -> Dict:
         ann_json_path=data_cfg['local_ann_json'],
         images_dir=data_cfg['local_images_dir'],
         category_map=data_cfg['category_map'],
-        batch_size=batch_cfg['batch_size'],
+        batch_size=batch_size,
         num_workers=batch_cfg['num_loader_threads'],
         max_images=data_cfg['max_images']
     )
@@ -105,7 +114,7 @@ def evaluate(config_path: str) -> Dict:
     total_predictions = 0
     total_batches = 0
 
-    logger.info(f"Starting batch evaluation (batch_size={batch_cfg['batch_size']})...")
+    logger.info(f"Starting batch evaluation (batch_size={batch_size})...")
 
     # Main evaluation loop - process batches until loader is done
     progress_bar = tqdm(desc="Evaluating batches", unit="batch")
@@ -212,7 +221,7 @@ def evaluate(config_path: str) -> Dict:
             'confidence_threshold': model_cfg['confidence_threshold'],
             'nms_iou_threshold': model_cfg['nms_iou_threshold'],
             'evaluation_iou_threshold': eval_cfg['iou_threshold'],
-            'batch_size': batch_cfg['batch_size'],
+            'batch_size': batch_size,
             'num_loader_threads': batch_cfg['num_loader_threads']
         },
         'metrics': metrics,
