@@ -897,12 +897,12 @@ Set `max_images: null` in config, then run full evaluation (may take 10-30 minut
 
 ---
 
-## Task 7: Create Visualizations
+## Task 7: Create Visualizations ✅
 
 **Files:**
-- Create: `scripts/visualize_results.py`
+- Create: `scripts/visualize_results.py` ✅
 
-- [ ] **Step 1: Write visualization script for P-R curve, confidence distribution, error examples**
+- [x] **Step 1: Write visualization script for P-R curve, confidence distribution, error examples**
 
 ```python
 #!/usr/bin/env python3
@@ -1042,7 +1042,7 @@ if __name__ == "__main__":
     visualize_results(args.results_json, args.output_dir)
 ```
 
-- [ ] **Step 2: Run visualization script**
+- [x] **Step 2: Run visualization script**
 
 ```bash
 python scripts/visualize_results.py \
@@ -1050,16 +1050,18 @@ python scripts/visualize_results.py \
   --output-dir results/trafficcamnet_eval/visualizations
 ```
 
-Expected: PNG files generated (pr_curve.png, confidence_dist.png)
+Expected: PNG files generated (pr_curve.png, confidence_dist.png) ✅
+- pr_curve.png: 1052x817 PNG (39 KB)
+- confidence_dist.png: 1784x581 PNG (46 KB)
 
 ---
 
-## Task 8: Create Experiment Summary
+## Task 8: Create Experiment Summary ✅
 
 **Files:**
-- Create: `results/trafficcamnet_eval/SUMMARY.md`
+- Create: `results/trafficcamnet_eval/SUMMARY.md` ✅
 
-- [ ] **Step 1: Write summary document with results**
+- [x] **Step 1: Write summary document with results**
 
 ```markdown
 # TrafficCamNet Evaluation Summary
@@ -1115,9 +1117,9 @@ Evaluation IoU Threshold: 0.5
 ```
 ```
 
-- [ ] **Step 2: Fill in actual values from results.json**
+- [x] **Step 2: Fill in actual values from results.json**
 
-Write Python script to populate template:
+Created Python script `scripts/populate_summary.py` to populate template:
 ```python
 import json
 from pathlib import Path
