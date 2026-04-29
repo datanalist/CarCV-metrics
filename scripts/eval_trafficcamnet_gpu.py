@@ -23,6 +23,7 @@ import json
 import csv
 import logging
 import time
+import os
 from typing import Dict, List, Tuple
 import numpy as np
 from tqdm import tqdm
@@ -67,9 +68,16 @@ def evaluate(config_path: str) -> Dict:
     batch_cfg = config['batch']
     out_cfg = config['artifacts']
 
-    # Create output directory
+    # Validate file existence before processing
+    assert Path(model_cfg['local_path']).exists(), f"Model not found: {model_cfg['local_path']}"
+    assert Path(data_cfg['local_ann_json']).exists(), f"Annotations not found: {data_cfg['local_ann_json']}"
+    assert Path(data_cfg['local_images_dir']).exists(), f"Images directory not found: {data_cfg['local_images_dir']}"
+    logger.info("File existence checks passed")
+
+    # Create output directory with write validation
     output_dir = Path(out_cfg['local_output_root'])
     output_dir.mkdir(parents=True, exist_ok=True)
+    assert output_dir.exists() and os.access(output_dir, os.W_OK), f"Output directory not writable: {output_dir}"
     logger.info(f"Output directory: {output_dir}")
 
     # Initialize BatchInferenceEngine with model
@@ -115,7 +123,7 @@ def evaluate(config_path: str) -> Dict:
 
         logger.debug(f"Processing batch {total_batches + 1} with {batch_size_actual} images")
 
-        # Measure batch-level inference latency
+        # Measure batch-level inference latency (inference only, excludes I/O and postprocessing)
         t_start = time.time()
         outputs = inference_engine.infer_batch(image_batch)
         batch_latency_ms = (time.time() - t_start) * 1000
@@ -143,12 +151,12 @@ def evaluate(config_path: str) -> Dict:
             continue
 
         # Accumulate metrics per image in batch
-        for img_idx, metadata in enumerate(metadata_list):
+        # Use zip to properly align metadata, detections, and ground truth
+        for metadata, detections, gt_boxes in zip(metadata_list, detections_per_image, gt_annotations_list):
             image_id = metadata['image_id']
             orig_h, orig_w = metadata['orig_shape']
 
             # Ground truth boxes for this image
-            gt_boxes = gt_annotations_list[img_idx]
             gt_boxes_pixel = [b['bbox'] for b in gt_boxes]
             total_gt_boxes += len(gt_boxes)
 
@@ -157,7 +165,6 @@ def evaluate(config_path: str) -> Dict:
             metrics_comp.add_ground_truths(metric_img_id, gt_boxes_pixel)
 
             # Predicted boxes for this image
-            detections = detections_per_image[img_idx]
             pred_boxes_pixel = [
                 (det.bbox, det.confidence) for det in detections
             ]
@@ -173,7 +180,7 @@ def evaluate(config_path: str) -> Dict:
 
     progress_bar.close()
 
-    logger.info(f"Processed {total_batches} batches with {batch_loader.total_images} images")
+    logger.info(f"Processed {metrics_comp.next_annotation_id - 1} predictions from {total_batches} batches")
 
     # Compute final metrics
     logger.info("Computing COCO metrics...")
@@ -192,9 +199,9 @@ def evaluate(config_path: str) -> Dict:
 
     # Check if targets are met
     target_met = {
-        'precision': metrics['precision'] >= eval_cfg['target_precision'],
-        'recall': metrics['recall'] >= eval_cfg['target_recall'],
-        'mAP_50': metrics['mAP_50'] >= eval_cfg.get('target_f1', 0.5)
+        'precision': metrics['precision'] >= eval_cfg.get('target_precision', 0.9),
+        'recall': metrics['recall'] >= eval_cfg.get('target_recall', 0.85),
+        'mAP_50': metrics['mAP_50'] >= eval_cfg.get('target_mAP_50', 0.5)
     }
 
     # Prepare results dictionary

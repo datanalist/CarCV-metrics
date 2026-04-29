@@ -57,11 +57,10 @@ data:
     rider: person
 
 evaluation:
-  batch_size: 16
   iou_threshold: 0.5
   target_precision: 0.90
   target_recall: 0.85
-  target_f1: 0.87
+  target_mAP_50: 0.85
   error_examples_n: 12
   save_predictions: true
 
