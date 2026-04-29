@@ -28,7 +28,7 @@ dependencies = [
     "nvidia-cublas-cu12>=12.0,<13; sys_platform == 'linux'",
     "nvidia-cuda-runtime-cu12>=12.0,<13; sys_platform == 'linux'",
     "nvidia-cudnn-cu12>=9.0,<10; sys_platform == 'linux'",
-    "pynvml>=11.0",
+    "nvidia-ml-py>=11.0",
 ]
 
 [[tool.uv.index]]
