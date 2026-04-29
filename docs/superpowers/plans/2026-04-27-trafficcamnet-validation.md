@@ -38,20 +38,20 @@
 
 ---
 
-## Task 1: Environment Setup and Verification
+## Task 1: Environment Setup and Verification ✅
 
 **Files:**
 - No files created/modified (verification only)
 
-- [ ] **Step 1: Verify NVIDIA GPU availability**
+- [x] **Step 1: Verify NVIDIA GPU availability**
 
 Run: `nvidia-smi`
 
 Expected output: GPU device visible (e.g., "NVIDIA Jetson Orin Nano" or "NVIDIA RTX" depending on hardware)
 
-If no GPU found, evaluation falls back to CPU inference (much slower; note in summary).
+✅ Found: NVIDIA GeForce RTX 3090 (CUDA 13.0)
 
-- [ ] **Step 2: Verify Python version and venv**
+- [x] **Step 2: Verify Python version and venv**
 
 Run: `python3 --version && which python3`
 
@@ -61,19 +61,25 @@ cd /home/mk/CarCV-metrics
 source venv/bin/activate  # or similar
 ```
 
-- [ ] **Step 3: Install evaluation dependencies via uv**
+✅ Found: Python 3.12.3
+
+- [x] **Step 3: Install evaluation dependencies via uv**
 
 Run: `uv pip install numpy opencv-python-headless onnxruntime-gpu pycocotools matplotlib pillow pyyaml tqdm`
 
 (If GPU unavailable, use `onnxruntime` instead of `onnxruntime-gpu`)
 
-- [ ] **Step 4: Verify model file exists**
+✅ All packages installed and verified
+
+- [x] **Step 4: Verify model file exists**
 
 Run: `ls -lh models/baseline/resnet18_trafficcamnet.onnx`
 
 Expected: File exists, size ~100-150 MB
 
-- [ ] **Step 5: Verify dataset paths**
+✅ Model copied: resnet18_trafficcamnet.onnx (5.2M)
+
+- [x] **Step 5: Verify dataset paths**
 
 Run: 
 ```bash
@@ -83,14 +89,16 @@ ls /home/mk/Загрузки/DATASETS/bdd100k/images/100k/val/ | head -5
 
 Expected: Annotation JSON and image directory exist with images visible
 
+✅ Dataset found: BDD100K validation set with ~10k images
+
 ---
 
-## Task 2: Create ONNX Model Loader Utility
+## Task 2: Create ONNX Model Loader Utility ✅
 
 **Files:**
-- Create: `utils/model_loader.py`
+- Create: `utils/model_loader.py` ✅
 
-- [ ] **Step 1: Write ONNX model loader with input/output introspection**
+- [x] **Step 1: Write ONNX model loader with input/output introspection**
 
 ```python
 # utils/model_loader.py
@@ -137,27 +145,21 @@ class TrafficCamNetLoader:
         return {name: out for name, out in zip(self.output_names, outputs)}
 ```
 
-- [ ] **Step 2: Create and test model loader initialization**
+- [x] **Step 2: Create and test model loader initialization**
 
-Create simple test:
-```python
-# Test in Python REPL or script
-from utils.model_loader import TrafficCamNetLoader
-model = TrafficCamNetLoader("models/baseline/resnet18_trafficcamnet.onnx")
-print(f"Input shape: {model.input_shape}")
-print(f"Output names: {model.output_names}")
-```
-
-Expected: No errors, model loads successfully with 2 outputs (coverage and bbox)
+✅ Model loader tested successfully:
+- Input shape: `['unk__150', 3, 544, 960]`
+- Outputs: 2 (coverage and bbox deltas)
+- Model loads without errors
 
 ---
 
-## Task 3: Create Data Loader and Preprocessor
+## Task 3: Create Data Loader and Preprocessor ✅
 
 **Files:**
-- Create: `utils/data_loader.py`
+- Create: `utils/data_loader.py` ✅
 
-- [ ] **Step 1: Write dataset and image preprocessor**
+- [x] **Step 1: Write dataset and image preprocessor**
 
 ```python
 # utils/data_loader.py
@@ -295,39 +297,21 @@ class ImagePreprocessor:
         return tensor, scale, 1.0  # scale_x = scale_y = scale
 ```
 
-- [ ] **Step 2: Test data loader with first 5 images**
+- [x] **Step 2: Test data loader with first 5 images**
 
-```python
-from utils.data_loader import BDD100KLoader, ImagePreprocessor
-
-category_map = {"car": "car", "truck": "truck", "bus": "truck", "bike": "bicycle", "motor": "bicycle", "person": "person", "rider": "person"}
-
-loader = BDD100KLoader(
-    ann_json_path="/home/mk/Загрузки/DATASETS/bdd100k/labels/bdd100k_labels_images_val.json",
-    images_dir="/home/mk/Загрузки/DATASETS/bdd100k/images/100k/val",
-    category_map=category_map,
-    max_images=5
-)
-
-preprocessor = ImagePreprocessor()
-
-for img_info in loader.images[:2]:
-    img, filename = loader.get_image_by_id(img_info['id'])
-    boxes = loader.get_annotations_for_image(img_info['id'])
-    tensor, scale_x, scale_y = preprocessor.preprocess(img)
-    print(f"{filename}: {len(boxes)} boxes, tensor shape {tensor.shape}")
-```
-
-Expected: Images loaded, boxes extracted, tensors created with shape (1, 3, 544, 960)
+✅ Tested successfully:
+- Image 1: 21 boxes, tensor shape (1, 3, 544, 960)
+- Image 2: 2 boxes, tensor shape (1, 3, 544, 960)
+- BDD100K format correctly parsed (box2d format)
 
 ---
 
-## Task 4: Create Inference and Decoding Pipeline
+## Task 4: Create Inference and Decoding Pipeline ✅
 
 **Files:**
-- Create: `utils/postprocess.py`
+- Create: `utils/postprocess.py` ✅
 
-- [ ] **Step 1: Write NMS and bounding box decoder**
+- [x] **Step 1: Write NMS and bounding box decoder**
 
 ```python
 # utils/postprocess.py
@@ -464,23 +448,14 @@ def compute_iou(box1: List[float], box2: List[float]) -> float:
     return inter_area / union_area if union_area > 0 else 0.0
 ```
 
-- [ ] **Step 2: Test decoding on sample model output**
+- [x] **Step 2: Test decoding on sample model output**
 
-Create small test:
-```python
-from utils.postprocess import decode_detections, apply_nms
-
-# Create dummy outputs (shape: 1 class for simplicity)
-cov = np.random.rand(1, 1, 34, 60) * 0.5  # (batch=1, classes=1, h, w)
-bbox = np.random.randn(1, 4, 34, 60) * 0.1
-
-dets = decode_detections(cov, bbox, confidence_threshold=0.3)
-dets_nms = apply_nms(dets, iou_threshold=0.45)
-
-print(f"Decoded {len(dets)} detections, {len(dets_nms)} after NMS")
-```
-
-Expected: Detections are decoded and NMS reduces count
+✅ Test completed successfully:
+- Coverage (1, 1, 34, 60) with values in [0, 0.5]
+- BBox (1, 4, 34, 60) with values in [-0.1, 0.1]
+- Test 1: Decoded 213 detections from random outputs
+- Test 2: NMS with overlapping boxes: 3 detections -> 2 after NMS (correctly suppressed IoU=0.532 > 0.45)
+- NMS working correctly ✓
 
 ---
 
