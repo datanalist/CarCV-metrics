@@ -19,13 +19,15 @@ class TrafficCamNetLoader:
         if providers is None:
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
 
+        ort.preload_dlls()
         self.session = ort.InferenceSession(model_path, providers=providers)
         active_providers = self.session.get_providers()
         if "CUDAExecutionProvider" not in active_providers:
             raise RuntimeError(
                 f"GPU inference not active. Active providers: {active_providers}\n"
-                "Fix: ensure nvidia-cublas-cu12, nvidia-cuda-runtime-cu12, "
-                "nvidia-cudnn-cu12 are installed (uv sync)."
+                "Fix: run `uv sync` to install nvidia-cublas-cu12, "
+                "nvidia-cuda-runtime-cu12, nvidia-cudnn-cu12, "
+                "nvidia-curand-cu12, nvidia-cufft-cu12."
             )
         logger.info(f"GPU confirmed. Active providers: {active_providers}")
         self.input_name = self.session.get_inputs()[0].name
