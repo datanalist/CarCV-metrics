@@ -10,7 +10,7 @@ Automatically adjusts batch size based on:
 
 import numpy as np
 import logging
-from typing import Tuple, Optional
+from typing import Tuple
 
 from utils.gpu_memory import GPUMemoryMonitor
 

@@ -14,6 +14,9 @@ runtime:
     - numpy
     - onnxruntime-gpu
     - opencv-python-headless
+    - nvidia-cublas-cu12
+    - nvidia-cuda-runtime-cu12
+    - nvidia-cudnn-cu12
 
 model:
   # ONNX model for RTX 5090 — convert from NGC etlt:
