@@ -8,7 +8,23 @@ Detection = namedtuple('Detection', ['bbox', 'confidence', 'class_id'])
 def decode_detections(cov_output: np.ndarray, bbox_output: np.ndarray,
                       confidence_threshold: float = 0.3,
                       input_w: int = 960, input_h: int = 544) -> List[Detection]:
-    """Decode TrafficCamNet coverage and bbox outputs to Detection objects."""
+    """
+    Decode TrafficCamNet coverage and bbox outputs to Detection objects.
+
+    For batch processing, temporarily stores batch index in class_id field.
+    Caller should extract and use batch index for grouping.
+
+    Args:
+        cov_output: (B, num_classes, H, W) confidence maps
+        bbox_output: (B, 4*num_classes, H, W) bbox deltas
+        confidence_threshold: Minimum confidence threshold
+        input_w: Input width (960)
+        input_h: Input height (544)
+
+    Returns:
+        List of Detection objects with bbox in normalized coords [0, 1]
+        Note: class_id field temporarily stores batch_idx for batch processing
+    """
     batch_size = cov_output.shape[0]
     num_classes = cov_output.shape[1]
     grid_h, grid_w = cov_output.shape[2], cov_output.shape[3]
@@ -44,7 +60,8 @@ def decode_detections(cov_output: np.ndarray, bbox_output: np.ndarray,
                 h = max(0, y2 - y1)
 
                 if w > 0 and h > 0:
-                    detections.append(Detection(bbox=[x1, y1, w, h], confidence=conf, class_id=c))
+                    # Store batch_idx in class_id field for grouping in batch postprocessing
+                    detections.append(Detection(bbox=[x1, y1, w, h], confidence=conf, class_id=b))
 
     return detections
 
