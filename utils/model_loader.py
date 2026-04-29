@@ -1,10 +1,10 @@
-# utils/model_loader.py
 import onnxruntime as ort
 import numpy as np
 from typing import Dict, Tuple, List
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 class TrafficCamNetLoader:
     """Load and manage ONNX TrafficCamNet model inference."""
@@ -20,6 +20,14 @@ class TrafficCamNetLoader:
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
 
         self.session = ort.InferenceSession(model_path, providers=providers)
+        active_providers = self.session.get_providers()
+        if "CUDAExecutionProvider" not in active_providers:
+            raise RuntimeError(
+                f"GPU inference not active. Active providers: {active_providers}\n"
+                "Fix: ensure nvidia-cublas-cu12, nvidia-cuda-runtime-cu12, "
+                "nvidia-cudnn-cu12 are installed (uv sync)."
+            )
+        logger.info(f"GPU confirmed. Active providers: {active_providers}")
         self.input_name = self.session.get_inputs()[0].name
         self.input_shape = self.session.get_inputs()[0].shape
         self.output_names = [o.name for o in self.session.get_outputs()]
