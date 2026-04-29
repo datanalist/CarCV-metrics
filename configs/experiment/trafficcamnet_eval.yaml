@@ -71,6 +71,6 @@ artifacts:
   raw_remote_dirname: raw_remote
 
 batch:
-  batch_size: 512
+  batch_size: auto
   num_loader_threads: 2
   queue_max_size: 3
