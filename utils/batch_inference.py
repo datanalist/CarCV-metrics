@@ -1,9 +1,10 @@
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import logging
 
 from utils.model_loader import TrafficCamNetLoader
 from utils.postprocess import decode_detections, apply_nms, Detection
+from utils.gpu_memory import GPUMemoryMonitor, GPUMemoryPool
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +18,20 @@ class BatchInferenceEngine:
     - Running batch inference on (B, 3, 544, 960) images
     - Postprocessing outputs (decode + NMS)
     - Converting normalized coords to pixel coords
+    - GPU memory optimization via pooling and monitoring
     """
 
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, gpu_memory_limit_mb: Optional[float] = None):
         """
         Initialize BatchInferenceEngine.
 
         Args:
             model_path: Path to ONNX model file
+            gpu_memory_limit_mb: GPU memory limit in MB. None = auto-detect 80% of available
         """
         self.model = TrafficCamNetLoader(model_path)
+        self.memory_monitor = GPUMemoryMonitor()
+        self.memory_pool = GPUMemoryPool(max_pool_size_mb=gpu_memory_limit_mb)
         logger.info(f"BatchInferenceEngine initialized with model: {model_path}")
 
     def infer_batch(self, batch: np.ndarray) -> Dict[str, np.ndarray]:
@@ -115,26 +120,19 @@ class BatchInferenceEngine:
             # Create new Detection with batch_idx temporarily stored
             detections_per_image[batch_idx].append(det)
 
-        # Apply NMS per image
+        # Apply NMS per image and convert to pixel coordinates
         nms_results = []
         for b, dets in enumerate(detections_per_image):
             kept_dets = apply_nms(dets, iou_threshold=iou_threshold)
 
-            # Convert from normalized to pixel coordinates
             img_h, img_w = image_shapes[b]
             pixel_dets = []
             for det in kept_dets:
-                x_norm, y_norm, w_norm, h_norm = det.bbox
-                x_pix = x_norm * img_w
-                y_pix = y_norm * img_h
-                w_pix = w_norm * img_w
-                h_pix = h_norm * img_h
-
-                # Create new Detection with pixel coords and reset class_id to 0
+                x1_n, y1_n, x2_n, y2_n = det.bbox
                 pixel_det = Detection(
-                    bbox=[x_pix, y_pix, w_pix, h_pix],
+                    bbox=[x1_n * img_w, y1_n * img_h, x2_n * img_w, y2_n * img_h],
                     confidence=det.confidence,
-                    class_id=0  # Reset to 0 after processing
+                    class_id=0,
                 )
                 pixel_dets.append(pixel_det)
 

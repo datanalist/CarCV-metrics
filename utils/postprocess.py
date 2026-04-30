@@ -1,73 +1,68 @@
 import numpy as np
-from typing import List, Tuple
+from typing import List
 from collections import namedtuple
 
 Detection = namedtuple('Detection', ['bbox', 'confidence', 'class_id'])
+
+# DetectNet v2 decode constants (matches TrafficCamNet training configuration)
+BBOX_SCALE = 35.0
+STRIDE = 16
+MIN_BBOX_SIZE = 0.02
 
 
 def decode_detections(cov_output: np.ndarray, bbox_output: np.ndarray,
                       confidence_threshold: float = 0.3,
                       input_w: int = 960, input_h: int = 544) -> List[Detection]:
     """
-    Decode TrafficCamNet coverage and bbox outputs to Detection objects.
+    Decode DetectNet v2 coverage and bbox outputs to Detection objects.
 
-    For batch processing, temporarily stores batch index in class_id field.
-    Caller should extract and use batch index for grouping.
+    Bbox format: [x1, y1, x2, y2] normalized to [0, 1].
+    class_id stores batch_idx for grouping in postprocess_batch.
 
-    Args:
-        cov_output: (B, num_classes, H, W) confidence maps
-        bbox_output: (B, 4*num_classes, H, W) bbox deltas
-        confidence_threshold: Minimum confidence threshold
-        input_w: Input width (960)
-        input_h: Input height (544)
-
-    Returns:
-        List of Detection objects with bbox in normalized coords [0, 1]
-        Note: class_id field temporarily stores batch_idx for batch processing
+    Decode formula (from DetectNet v2 spec):
+        x1 = (xs * STRIDE - dx1 * BBOX_SCALE) / input_w
+        y1 = (ys * STRIDE - dy1 * BBOX_SCALE) / input_h
+        x2 = ((xs+1) * STRIDE + dx2 * BBOX_SCALE) / input_w
+        y2 = ((ys+1) * STRIDE + dy2 * BBOX_SCALE) / input_h
     """
     batch_size = cov_output.shape[0]
     num_classes = cov_output.shape[1]
-    grid_h, grid_w = cov_output.shape[2], cov_output.shape[3]
-
     detections = []
+
     for b in range(batch_size):
         for c in range(num_classes):
             cov = cov_output[b, c]
-            mask = cov >= confidence_threshold
-            grid_y, grid_x = np.where(mask)
+            ys, xs = np.where(cov >= confidence_threshold)
+            if len(ys) == 0:
+                continue
 
-            for gy, gx in zip(grid_y, grid_x):
-                conf = float(cov[gy, gx])
-                bbox_offset = c * 4
-                dy = float(bbox_output[b, bbox_offset + 0, gy, gx])
-                dx = float(bbox_output[b, bbox_offset + 1, gy, gx])
-                dh = float(bbox_output[b, bbox_offset + 2, gy, gx])
-                dw = float(bbox_output[b, bbox_offset + 3, gy, gx])
+            confidences = cov[ys, xs]
+            base = c * 4
+            dx1 = bbox_output[b, base + 0, ys, xs]
+            dy1 = bbox_output[b, base + 1, ys, xs]
+            dx2 = bbox_output[b, base + 2, ys, xs]
+            dy2 = bbox_output[b, base + 3, ys, xs]
 
-                cx = (gx + 0.5) / grid_w
-                cy = (gy + 0.5) / grid_h
-                bx = cx + dx / input_w
-                by = cy + dy / input_h
-                bw = dw / input_w
-                bh = dh / input_h
+            x1 = np.clip((xs * STRIDE - dx1 * BBOX_SCALE) / input_w, 0.0, 1.0)
+            y1 = np.clip((ys * STRIDE - dy1 * BBOX_SCALE) / input_h, 0.0, 1.0)
+            x2 = np.clip(((xs + 1) * STRIDE + dx2 * BBOX_SCALE) / input_w, 0.0, 1.0)
+            y2 = np.clip(((ys + 1) * STRIDE + dy2 * BBOX_SCALE) / input_h, 0.0, 1.0)
 
-                x1 = max(0, bx - bw / 2)
-                y1 = max(0, by - bh / 2)
-                x2 = min(1, bx + bw / 2)
-                y2 = min(1, by + bh / 2)
+            valid = (x2 - x1 > MIN_BBOX_SIZE) & (y2 - y1 > MIN_BBOX_SIZE)
+            indices = np.where(valid)[0]
 
-                w = max(0, x2 - x1)
-                h = max(0, y2 - y1)
-
-                if w > 0 and h > 0:
-                    # Store batch_idx in class_id field for grouping in batch postprocessing
-                    detections.append(Detection(bbox=[x1, y1, w, h], confidence=conf, class_id=b))
+            for i in indices:
+                detections.append(Detection(
+                    bbox=[float(x1[i]), float(y1[i]), float(x2[i]), float(y2[i])],
+                    confidence=float(confidences[i]),
+                    class_id=b,
+                ))
 
     return detections
 
 
 def apply_nms(detections: List[Detection], iou_threshold: float = 0.45) -> List[Detection]:
-    """Apply Non-Maximum Suppression to detections."""
+    """Apply Non-Maximum Suppression to detections with [x1, y1, x2, y2] bbox format."""
     if not detections:
         return []
 
@@ -82,30 +77,20 @@ def apply_nms(detections: List[Detection], iou_threshold: float = 0.45) -> List[
         for j in range(i + 1, len(sorted_dets)):
             if j in suppressed:
                 continue
-            det_j = sorted_dets[j]
-            iou = compute_iou(det_i.bbox, det_j.bbox)
-            if iou > iou_threshold:
+            if compute_iou(det_i.bbox, sorted_dets[j].bbox) > iou_threshold:
                 suppressed.add(j)
 
     return kept
 
 
 def compute_iou(box1: List[float], box2: List[float]) -> float:
-    """Compute IoU between two boxes in [x, y, w, h] format (normalized)."""
-    x1_1, y1_1, w1, h1 = box1
-    x2_1, y2_1 = x1_1 + w1, y1_1 + h1
-
-    x1_2, y1_2, w2, h2 = box2
-    x2_2, y2_2 = x1_2 + w2, y1_2 + h2
-
-    xi1 = max(x1_1, x1_2)
-    yi1 = max(y1_1, y1_2)
-    xi2 = min(x2_1, x2_2)
-    yi2 = min(y2_1, y2_2)
-
-    inter_area = max(0, xi2 - xi1) * max(0, yi2 - yi1)
-    box1_area = w1 * h1
-    box2_area = w2 * h2
-    union_area = box1_area + box2_area - inter_area
-
-    return inter_area / union_area if union_area > 0 else 0.0
+    """IoU for [x1, y1, x2, y2] format."""
+    ix1 = max(box1[0], box2[0])
+    iy1 = max(box1[1], box2[1])
+    ix2 = min(box1[2], box2[2])
+    iy2 = min(box1[3], box2[3])
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    area1 = max(0.0, box1[2] - box1[0]) * max(0.0, box1[3] - box1[1])
+    area2 = max(0.0, box2[2] - box2[0]) * max(0.0, box2[3] - box2[1])
+    union = area1 + area2 - inter
+    return inter / union if union > 0 else 0.0

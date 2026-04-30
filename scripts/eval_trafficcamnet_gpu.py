@@ -30,7 +30,7 @@ from tqdm import tqdm
 
 from utils.batch_data_loader import BDD100KBatchLoader
 from utils.batch_inference import BatchInferenceEngine
-from utils.metrics import COCOMetricsComputer, ConfidenceStats
+from utils.metrics import SimpleMetricsComputer, ConfidenceStats
 from utils.adaptive_batch_size import AdaptiveBatchSize
 
 logging.basicConfig(
@@ -72,7 +72,7 @@ def evaluate(config_path: str) -> Dict:
     # Resolve batch size: "auto" calls AdaptiveBatchSize().calculate()
     raw_batch_size = batch_cfg['batch_size']
     if raw_batch_size == 'auto':
-        batch_size = AdaptiveBatchSize().calculate()
+        batch_size = AdaptiveBatchSize().calculate(max_batch_size=64)
         if batch_size == 64:
             logger.warning("AdaptiveBatchSize returned minimum (64) — GPU may not be available")
         logger.info(f"Adaptive batch size calculated: {batch_size}")
@@ -112,7 +112,7 @@ def evaluate(config_path: str) -> Dict:
     )
 
     # Initialize metrics collectors
-    metrics_comp = COCOMetricsComputer(class_name='car', iou_threshold=eval_cfg['iou_threshold'])
+    metrics_comp = SimpleMetricsComputer(iou_threshold=eval_cfg['iou_threshold'])
     conf_stats = ConfidenceStats()
 
     # Tracking variables
@@ -167,27 +167,22 @@ def evaluate(config_path: str) -> Dict:
             continue
 
         # Accumulate metrics per image in batch
-        # Use zip to properly align metadata, detections, and ground truth
         for metadata, detections, gt_boxes in zip(metadata_list, detections_per_image, gt_annotations_list):
             image_id = metadata['image_id']
-            orig_h, orig_w = metadata['orig_shape']
 
-            # Ground truth boxes for this image
-            gt_boxes_pixel = [b['bbox'] for b in gt_boxes]
+            # GT boxes: convert [x, y, w, h] → [x1, y1, x2, y2] pixel coords
+            gt_boxes_xyxy = [
+                [b['bbox'][0], b['bbox'][1],
+                 b['bbox'][0] + b['bbox'][2], b['bbox'][1] + b['bbox'][3]]
+                for b in gt_boxes
+            ]
             total_gt_boxes += len(gt_boxes)
 
-            # Register image with metrics
-            metric_img_id = metrics_comp.add_image(orig_h, orig_w)
-            metrics_comp.add_ground_truths(metric_img_id, gt_boxes_pixel)
-
-            # Predicted boxes for this image
-            pred_boxes_pixel = [
-                (det.bbox, det.confidence) for det in detections
-            ]
+            # Predicted boxes: already [x1,y1,x2,y2] pixel from postprocess_batch
+            pred_boxes = [(det.bbox, det.confidence) for det in detections]
             total_predictions += len(detections)
 
-            # Add predictions and confidence stats
-            metrics_comp.add_predictions(metric_img_id, pred_boxes_pixel)
+            metrics_comp.add_image_results(image_id, gt_boxes_xyxy, pred_boxes)
             for det in detections:
                 conf_stats.add_prediction(det.confidence)
 
@@ -196,10 +191,10 @@ def evaluate(config_path: str) -> Dict:
 
     progress_bar.close()
 
-    logger.info(f"Processed {metrics_comp.next_annotation_id - 1} predictions from {total_batches} batches")
+    logger.info(f"Processed {total_predictions} predictions from {total_batches} batches")
 
     # Compute final metrics
-    logger.info("Computing COCO metrics...")
+    logger.info("Computing metrics...")
     metrics = metrics_comp.compute()
 
     # Compute latency statistics
