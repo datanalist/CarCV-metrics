@@ -3,6 +3,8 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import logging
+import threading
+import queue
 from utils.data_loader import BDD100KLoader, ImagePreprocessor
 
 logger = logging.getLogger(__name__)
@@ -118,3 +120,80 @@ class BDD100KBatchLoader:
     def is_done(self) -> bool:
         """Check if all batches have been consumed."""
         return self.current_batch_idx >= self.total_images
+
+
+class BDD100KBatchLoaderWithPipeline(BDD100KBatchLoader):
+    """
+    Pipelined batch loader: background thread loads next batch while main thread processes current.
+
+    Reduces GPU stalls waiting for I/O by overlapping data loading with inference.
+    """
+
+    def __init__(self, ann_json_path: str, images_dir: str, category_map: Dict[str, str],
+                 batch_size: int = 512, num_workers: int = 2, max_images: Optional[int] = None,
+                 prefetch_batches: int = 2):
+        """
+        Initialize pipelined batch loader.
+
+        Args:
+            ann_json_path: Path to BDD100K annotations JSON
+            images_dir: Path to images directory
+            category_map: Dict mapping BDD100K categories to target classes
+            batch_size: Number of images per batch (default 512)
+            num_workers: Number of workers for data loading (default 2)
+            max_images: Limit number of images (None = all)
+            prefetch_batches: Number of batches to prefetch (default 2)
+        """
+        super().__init__(ann_json_path, images_dir, category_map, batch_size, num_workers, max_images)
+
+        self.prefetch_batches = prefetch_batches
+        self.batch_queue: queue.Queue = queue.Queue(maxsize=prefetch_batches)
+        self.stop_loader = False
+        self.loader_exception = None
+
+        # Start background loader thread
+        self.loader_thread = threading.Thread(target=self._loader_worker, daemon=True)
+        self.loader_thread.start()
+
+        logger.info(f"Started pipelined loader with {prefetch_batches} prefetch batches")
+
+    def _loader_worker(self):
+        """Background thread: continuously load batches into queue."""
+        try:
+            while not self.stop_loader and not self.is_done():
+                batch = super().get_batch()
+
+                if batch is None:
+                    break
+
+                self.batch_queue.put(batch, timeout=10)  # 10s timeout to avoid deadlock
+
+            self.batch_queue.put(None)  # Signal end of stream
+        except Exception as e:
+            self.loader_exception = e
+            logger.error(f"Loader worker error: {e}")
+            self.batch_queue.put(None)
+
+    def get_batch(self) -> Optional[Tuple[np.ndarray, List[Dict], List[List[Dict]]]]:
+        """
+        Get next batch from prefetch queue (non-blocking from main thread perspective).
+
+        Returns:
+            Tuple or None if all batches consumed
+        """
+        try:
+            batch = self.batch_queue.get(timeout=60)  # 60s timeout per batch
+            return batch
+        except queue.Empty:
+            logger.warning("Batch queue timeout - loader stalled?")
+            return None
+        except Exception as e:
+            if self.loader_exception:
+                raise self.loader_exception
+            raise
+
+    def stop(self):
+        """Stop the loader thread gracefully."""
+        self.stop_loader = True
+        self.loader_thread.join(timeout=5)
+        logger.info("Pipelined loader stopped")
