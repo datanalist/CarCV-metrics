@@ -34,7 +34,12 @@ wheels/
 
 # Project-specific
 models/
-results/
+# Ignore artifacts under results/, but keep *.md nested under subdirectories
+results/*
+!results/**/
+!results/*/**/*.md
+
+
 plots/
 notebooks/.ipynb_checkpoints/
 
