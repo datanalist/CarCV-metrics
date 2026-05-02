@@ -1,0 +1,72 @@
+experiment:
+  name: trafficcamnet_unprunned_eval_test
+  seed: 42
+
+runtime:
+  remote_host: qudata
+  remote_python: python3
+  remote_uv: uv
+  remote_bundle_root: /dev/shm/trafficcamnet_unprunned_eval
+  remote_python_version: "3.10"
+  run_id: null
+  cleanup_remote_bundle: true
+  remote_with_packages:
+    - numpy
+    - onnxruntime-gpu
+    - opencv-python-headless
+
+model:
+  format: tlt
+  tlt_path: models/baseline/resnet18_trafficcamnet.tlt
+  onnx_cache_path: models/baseline/resnet18_trafficcamnet_unprunned.onnx
+  model_key: tlt_encode
+  force_reexport: false
+
+  input_w: 960
+  input_h: 544
+  input_c: 3
+  num_classes: 4
+  class_names: [car, truck, bicycle, person]
+  net_scale_factor: 0.0039215697906911373
+  mean_r: 123.68
+  mean_g: 116.779
+  mean_b: 103.939
+  confidence_threshold: 0.3
+  nms_iou_threshold: 0.45
+  output_cov_name: "output_cov/Sigmoid"
+  output_bbox_name: "output_bbox/BiasAdd"
+
+data:
+  local_ann_json: /home/mk/Загрузки/DATASETS/bdd100k/bdd100k_labels_release/bdd100k/labels/bdd100k_labels_images_val.json
+  local_images_dir: /home/mk/Загрузки/DATASETS/bdd100k/bdd100k/bdd100k/images/100k/val
+  remote_images_dir: ~/datasets/bdd100k/images/100k/val
+  kaggle_dataset: solesensei/solesensei_bdd100k
+  max_images: 10  # smoke-test on a handful of frames
+
+  category_map:
+    car: car
+    truck: truck
+    bus: truck
+    bike: bicycle
+    motor: bicycle
+    person: person
+    rider: person
+
+evaluation:
+  iou_threshold: 0.5
+  target_precision: 0.90
+  target_recall: 0.85
+  target_mAP_50: 0.85
+  error_examples_n: 12
+  save_predictions: true
+
+artifacts:
+  local_output_root: results/trafficcamnet_unprunned_eval
+  local_figure_root: notebooks/tcn_unprunned_eval/images
+  remote_output_dirname: outputs
+  raw_remote_dirname: raw_remote
+
+batch:
+  batch_size: 4
+  num_loader_threads: 1
+  queue_max_size: 3

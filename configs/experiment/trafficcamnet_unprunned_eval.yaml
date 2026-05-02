@@ -1,0 +1,94 @@
+experiment:
+  name: trafficcamnet_unprunned_eval_bdd100k
+  seed: 42
+
+runtime:
+  remote_host: qudata
+  remote_python: python3
+  remote_uv: uv
+  remote_bundle_root: /dev/shm/trafficcamnet_unprunned_eval
+  remote_python_version: "3.10"
+  run_id: null
+  cleanup_remote_bundle: true
+  remote_with_packages:
+    - numpy
+    - onnxruntime-gpu
+    - opencv-python-headless
+    - nvidia-cublas-cu12
+    - nvidia-cuda-runtime-cu12
+    - nvidia-cudnn-cu12
+
+model:
+  # NVIDIA TAO TrafficCamNet — UNPRUNED checkpoint (.tlt).
+  # Source: NGC `nvidia/tao/trafficcamnet:unpruned_v1.0`
+  #   ngc registry model download-version "nvidia/tao/trafficcamnet:unpruned_v1.0"
+  #
+  # The .tlt is exported to ONNX on first run (cached at `onnx_cache_path`).
+  # Manual export equivalent:
+  #   tao model detectnet_v2 export \
+  #       -m models/baseline/resnet18_trafficcamnet.tlt \
+  #       -k tlt_encode \
+  #       --export_format onnx \
+  #       -o models/baseline/resnet18_trafficcamnet_unprunned.onnx \
+  #       --input_dims 3,544,960
+  format: tlt                                            # tlt | onnx
+  tlt_path: models/baseline/resnet18_trafficcamnet.tlt
+  onnx_cache_path: models/baseline/resnet18_trafficcamnet_unprunned.onnx
+  model_key: tlt_encode                                  # NGC public key for unpruned_v1.0
+  force_reexport: false
+
+  # Used both as detectnet_v2 export `--input_dims` and as ONNX runtime input shape.
+  input_w: 960
+  input_h: 544
+  input_c: 3
+  num_classes: 4
+  class_names: [car, truck, bicycle, person]
+  # Preprocessing matches DeepStream PGIE config:
+  #   net-scale-factor=1/255, offsets=103.939;116.779;123.68 (BGR), color-format=RGB
+  net_scale_factor: 0.0039215697906911373
+  mean_r: 123.68
+  mean_g: 116.779
+  mean_b: 103.939
+  confidence_threshold: 0.3
+  nms_iou_threshold: 0.45
+  output_cov_name: "output_cov/Sigmoid"
+  output_bbox_name: "output_bbox/BiasAdd"
+
+data:
+  # Local paths (for annotation staging and local analysis)
+  local_ann_json: /home/mk/Загрузки/DATASETS/bdd100k/bdd100k_labels_release/bdd100k/labels/bdd100k_labels_images_val.json
+  local_images_dir: /home/mk/Загрузки/DATASETS/bdd100k/bdd100k/bdd100k/images/100k/val
+  # Remote path — BDD100K must be downloaded on remote host:
+  #   kaggle datasets download -d solesensei/solesensei_bdd100k && unzip
+  remote_images_dir: ~/datasets/bdd100k/images/100k/val
+  kaggle_dataset: solesensei/solesensei_bdd100k
+  max_images: null  # null = all ~10000 val images
+
+  # BDD100K → TrafficCamNet class mapping
+  category_map:
+    car: car
+    truck: truck
+    bus: truck
+    bike: bicycle
+    motor: bicycle
+    person: person
+    rider: person
+
+evaluation:
+  iou_threshold: 0.5
+  target_precision: 0.90
+  target_recall: 0.85
+  target_mAP_50: 0.85
+  error_examples_n: 12
+  save_predictions: true
+
+artifacts:
+  local_output_root: results/trafficcamnet_unprunned_eval
+  local_figure_root: notebooks/tcn_unprunned_eval/images
+  remote_output_dirname: outputs
+  raw_remote_dirname: raw_remote
+
+batch:
+  batch_size: auto
+  num_loader_threads: 2
+  queue_max_size: 3
