@@ -240,14 +240,32 @@ def bdd100k_to_yolo(box2d, img_width, img_height):
 
 ---
 
+## Лицензия
+
+- **Код** (репозиторий `ucbdrive/bdd100k`): BSD 3-Clause.
+- **Данные и аннотации** (доступ через https://bdd-data.berkeley.edu/): UC Berkeley custom data license.
+  - ✅ Свободно для **educational, research, not-for-profit** целей без оплаты и подписания соглашений.
+  - ⚠️ Коммерческое использование — требует обращения в **UC Berkeley Office of Technology Licensing**: `otl@berkeley.edu`, http://ipira.berkeley.edu/industry-info
+  - Регенты UC Berkeley не несут ответственности за прямой/непрямой ущерб; warranties of merchantability and fitness for a particular purpose явно исключены.
+
+**Для CARS (комм. продукт):**
+- Internal benchmark / CP3 prep → ✅ допустимо как research.
+- Публикация метрик во внешних материалах (whitepapers, sales decks, маркетинг) → требуется соглашение с OTL Berkeley.
+
+Подробности: https://doc.bdd100k.com/license.html
+
+---
+
 ## Ссылки
 
 - [Официальный сайт BDD100K](https://www.bdd100k.com/)
 - [Документация по формату аннотаций](https://doc.bdd100k.com/format.html)
+- [License](https://doc.bdd100k.com/license.html)
 - [GitHub репозиторий](https://github.com/bdd100k/bdd100k)
 
 ---
 
 ## История изменений
 
-- **2026-01-24** — Создана документация на основе анализа локального датасета
+- **2026-01-24** — Создана документация на основе анализа локального датасета.
+- **2026-05-15** — Добавлен раздел «Лицензия» (UC Berkeley custom data license, требования OTL для commercial use). Изменение в рамках research-датасетов для валидации ML-стека CARS (`_bmad-output/planning-artifacts/research-datasets-validation.md`).
