@@ -1,0 +1,14 @@
+onnxruntime-gpu==1.20.1
+numpy>=1.24
+opencv-python-headless>=4.8
+Pillow>=10.0
+datasets>=2.20
+huggingface_hub>=0.23
+pandas>=2.0
+pycocotools>=2.0.7
+matplotlib>=3.8
+seaborn>=0.13
+scipy>=1.11
+tqdm>=4.66
+pyyaml>=6.0
+kaggle>=1.6

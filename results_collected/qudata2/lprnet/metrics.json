@@ -1,0 +1,21 @@
+{
+  "metrics": {
+    "char_accuracy": 0.5903,
+    "full_plate_accuracy": 0.0621,
+    "char_error_rate": 0.4097,
+    "num_samples": 4893
+  },
+  "thresholds": {
+    "char_accuracy": {
+      "value": 0.5903,
+      "threshold": 0.9,
+      "status": "FAIL"
+    },
+    "full_plate_accuracy": {
+      "value": 0.0621,
+      "threshold": 0.8,
+      "status": "FAIL"
+    }
+  },
+  "note": "US Latin model evaluated on RU Cyrillic plates \u2014 domain gap expected"
+}

@@ -1,0 +1,43 @@
+#!/bin/bash
+# Setup script for CARS evaluation server
+# Run once on each server after rsync
+
+set -e
+
+echo "=== CARS Evaluation Server Setup ==="
+echo "Server: $(hostname)"
+echo "GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
+
+# Install uv
+if ! command -v uv &>/dev/null; then
+    echo "[1/4] Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+else
+    echo "[1/4] uv already installed: $(uv --version)"
+fi
+
+export PATH="$HOME/.local/bin:$PATH"
+
+# Create virtual environment and install deps
+echo "[2/4] Creating Python environment..."
+cd "$(dirname "$0")/.."
+uv venv --python 3.12 venv
+source venv/bin/activate
+uv pip install -r requirements.txt
+
+# Create data directories
+echo "[3/4] Creating directories..."
+mkdir -p models/{trafficcamnet,vehiclemakenet,vehicletypenet,lpdnet,lprnet,color}
+mkdir -p data/{bdd100k,mad_cars,nomeroff_lp,nomeroff_ocr_ru,bit_vehicle}
+mkdir -p results/{trafficcamnet,vehiclemakenet,vehicletypenet,lpdnet,lprnet,color}
+mkdir -p plots logs
+
+# Verify GPU access
+echo "[4/4] Verifying GPU..."
+python -c "import onnxruntime as ort; print('ORT providers:', ort.get_available_providers())"
+
+echo ""
+echo "=== Setup complete ==="
+echo "Next: run download_models.sh then download_datasets.sh"
