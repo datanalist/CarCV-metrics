@@ -38,6 +38,8 @@ VALID_EXPERIMENTS = {
     "vehicletypenet",
     "lpdnet",
     "lprnet",
+    "nomeroff_lpd",
+    "nomeroff_ocr",
 }
 REQUIRED_REMOTE_KEYS = {"deploy_dir", "venv", "results_local"}
 
