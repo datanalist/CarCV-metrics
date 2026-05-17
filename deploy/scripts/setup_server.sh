@@ -51,7 +51,7 @@ uv pip install "opencv-python-headless>=4.8" --reinstall --quiet
 # Create data directories
 echo "[3/4] Creating directories..."
 mkdir -p models/{trafficcamnet,vehiclemakenet,vehicletypenet,lpdnet,lprnet,color}
-mkdir -p data/{bdd100k,mad_cars,nomeroff_lp,nomeroff_ocr_ru,bit_vehicle}
+mkdir -p data/{bdd100k,mad_cars,nomeroff_lp,nomeroff_ocr_ru,bit_vehicle,stanford_cars,coco}
 mkdir -p results/{trafficcamnet,vehiclemakenet,vehicletypenet,lpdnet,lprnet,color}
 mkdir -p plots logs
 

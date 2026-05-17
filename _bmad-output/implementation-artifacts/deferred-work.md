@@ -43,15 +43,35 @@
 
 ---
 
-## Goal 4 — §6.5 dataset migration + class-mapping fixes (new, surfaced by Goal 2)
+## Goal 4 — §6.5 dataset migration + class-mapping fixes (CODE READY 2026-05-17)
 
 **Зачем:** Полученные в Goal 2 низкие метрики (TrafficCamNet F1=0.053, VehicleMakeNet Top1=0.002) — следствие data/label mismatch, не сломанной модели. Реальная валидация требует перехода на §6.5 шорт-лист.
 
-**Scope:**
-- Восстановить vehicletypenet: Kaggle auth ИЛИ переход на Stanford Cars + Make→Type mapping (требует переписать `eval_vehicletypenet`).
-- TrafficCamNet: проверить class-mapping COCO→TrafficCamNet labels (4 класса bicycle/car/person/road_sign), либо мигрировать на BDD100K val (10K) с native labels.
-- VehicleMakeNet: чинить label-mapping mad-cars `brand` → NGC 20 makes (сейчас всё схлопывается в «acura»); параллельно завести Stanford Cars test для cross-check.
-- LPDNet/LPRNet: оценить целесообразность RU-моделей (NTechLab/nomeroff_lpd) — текущие USA/US-веса дают ожидаемый low recall/PlateAcc.
+**Перенос инфраструктуры (2026-05-17):** ssh1.qudata.ai стал недоступен → весь Goal 4 кампания перенесена на ssh9.qudata.ai (`configs/remote_experiments.yaml`).
+
+**Status:**
+- ✅ **VehicleMakeNet bug fix.** Корневая причина "acura collapse" найдена: `normalize_brand('')` возвращал "acura", потому что `"" in "acura"` всегда True → все 4960 семплов получали GT "acura". Фикс: явная проверка длины (≥3) + exact-match приоритет. Regression-tests в `tests/test_normalize_brand.py` (14/14 PASS).
+- ✅ **TrafficCamNet multi-class evaluation.** Расширен `eval_trafficcamnet` до 4-классовой оценки (car/person/bicycle/road_sign), `conf_thr` параметризован через cfg (default 0.2 под cross-domain), добавлены `per_class` + `macro` метрики. BDD100K val 10K — опциональный path через `BDD100K_HF_REPO` env var; primary остаётся COCO val2017 (4-class mapping: COCO 1/2/3/13 → person/bicycle/car/traffic sign).
+- ✅ **VehicleTypeNet миграция на Stanford Cars.** Переписан `eval_vehicletypenet`: вместо BIT-Vehicle (Kaggle-blocked) использует `data/stanford_cars/test.json` + автогенерируемый mapping body-type через `STANFORD_BODY_KEYWORDS` (sedan/coupe/suv/van/truck — `derive_typenet_label`). Audit-таблица записывается в `data/stanford_cars/type_mapping.csv` при каждом запуске (§7.5 reproducibility). Regression-tests в `tests/test_typenet_mapping.py` (17/17 PASS). BIT-Vehicle layout сохранён как fallback для обратной совместимости.
+- ✅ **LPDNet/LPRNet RU swap** — закрыто Goal 5 (nomeroff-net).
+
+**Доставка на ssh9 (deliverable артефакты):**
+- `deploy/evaluation/evaluate.py` — фиксы + новые маппинги
+- `deploy/scripts/download_datasets_ssh9_goal4.sh` — объединённый download (COCO/BDD100K + mad-cars + Stanford Cars через HF)
+- `deploy/scripts/setup_server.sh` — добавил `stanford_cars`, `coco` каталоги
+- `configs/remote_experiments.yaml` — ssh9-only, все 5 моделей
+- `tests/test_normalize_brand.py`, `tests/test_typenet_mapping.py` — regression-tests
+
+**Действия для прогона на ssh9** (выполняет пользователь — нет SSH-доступа из текущего окружения):
+1. `python deploy/scripts/run_remote.py deploy` — синхронизирует код на ssh9 + setup_server.sh.
+2. `ssh ssh9.qudata.ai 'cd cars-eval && bash deploy/scripts/download_datasets_ssh9_goal4.sh'` — скачать датасеты (опционально `BDD100K_HF_REPO=<hf-mirror>` для замены COCO на BDD100K).
+3. `python deploy/scripts/run_remote.py run` — запустить параллельно все 5 экспериментов в фоне.
+4. `python deploy/scripts/run_remote.py collect` — забрать results+plots в `results_collected/ssh9.qudata.ai/`.
+5. Запустить `notebooks/post_processing.ipynb` для обновлённых графиков; `deploy/evaluation/aggregate_summary.py` для SUMMARY.md.
+
+**Каveat (Honest Reporting):**
+- TrafficCamNet всё ещё может FAIL на COCO val2017 даже с multi-class evaluation — domain gap (street-level vs traffic-cam top-down) остаётся. Для перехода на in-domain BDD100K val 10K требуется HF mirror с известным repo ID (placeholder в скрипте).
+- VehicleTypeNet на Stanford Cars: catalog-photos vs road-scene — domain gap. Также распределение body-types в Stanford смещено к sedan/coupe.
 
 **Зависит от:** Goal 2 ✅.
 

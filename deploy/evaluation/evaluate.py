@@ -148,6 +148,17 @@ def detectnet_v2_decode(cov, bbox, target_cls, conf_thr=0.4,
 
 # ─── TrafficCamNet ────────────────────────────────────────────────────────────
 
+# Goal 4: TrafficCamNet — 4-class native labels (was: car-only on COCO).
+# Maps TrafficCamNet label names → set of dataset categories that count as TP.
+# BDD100K and COCO/BDD-compatible labels use different vocabularies; merge both.
+TRAFFICCAMNET_GT_VOCAB = {
+    "car": {"car"},
+    "person": {"person", "pedestrian"},
+    "bicycle": {"bike", "bicycle", "rider"},
+    "road_sign": {"traffic sign", "sign", "traffic_sign", "trafficsign"},
+}
+
+
 def eval_trafficcamnet(cfg: dict) -> dict:
     model_path = ROOT / cfg["model_path"]
     data_dir = ROOT / cfg["data_dir"]
@@ -160,7 +171,17 @@ def eval_trafficcamnet(cfg: dict) -> dict:
         return {"error": "model not found"}
 
     labels = load_labels(labels_path)
-    car_idx = next((i for i, l in enumerate(labels) if l.strip().lower() == "car"), 0)
+    labels_lower = [l.strip().lower() for l in labels]
+    # conf_thr поднимается из cfg: для cross-domain (COCO street-level) — 0.2;
+    # для in-domain (BDD100K traffic-cam, ближе к training-условиям) — 0.4.
+    conf_thr = float(cfg.get("conf_thr", 0.2))
+    # Class subset (по умолчанию все 4 TrafficCamNet класса; можно ограничить через cfg)
+    eval_classes_cfg = cfg.get("eval_classes")
+    eval_classes = (
+        [c.lower() for c in eval_classes_cfg]
+        if eval_classes_cfg
+        else [l for l in labels_lower if l in TRAFFICCAMNET_GT_VOCAB]
+    )
 
     sess = get_ort_session(str(model_path))
     input_name = sess.get_inputs()[0].name
@@ -168,20 +189,21 @@ def eval_trafficcamnet(cfg: dict) -> dict:
 
     meta_path = data_dir / "labels.json"
     if not meta_path.exists():
-        log.error(f"BDD100k labels not found: {meta_path}")
+        log.error(f"detection labels not found: {meta_path}")
         return {"error": "dataset not found"}
 
     with open(meta_path) as f:
         all_meta = json.load(f)
 
-    predictions, ground_truths = [], []
+    # Multi-class collection — отдельные predictions/ground_truths на каждый класс
+    per_class_pred = {c: [] for c in eval_classes}
+    per_class_gt = {c: [] for c in eval_classes}
     images_dir = data_dir / "images"
 
     for item in tqdm(all_meta, desc="TrafficCamNet", unit="img"):
         img_path = images_dir / item["file_name"]
         if not img_path.exists():
             continue
-
         img = cv2.imread(str(img_path))
         if img is None:
             continue
@@ -194,31 +216,78 @@ def eval_trafficcamnet(cfg: dict) -> dict:
         # DetectNet_v2: outputs are [cov: B,C,gh,gw] and [bbox: B,4C,gh,gw]
         cov = outputs[0][0]   # [C, gh, gw]
         bbox = outputs[1][0]  # [4C, gh, gw]
-        boxes_pred = detectnet_v2_decode(
-            cov, bbox, target_cls=car_idx, conf_thr=0.4,
-            stride=16, bbox_norm=35.0, img_w=W, img_h=H,
-            scale_w=orig_w / W, scale_h=orig_h / H,
+
+        for cls_name in eval_classes:
+            cls_idx = labels_lower.index(cls_name)
+            boxes_pred = detectnet_v2_decode(
+                cov, bbox, target_cls=cls_idx, conf_thr=conf_thr,
+                stride=16, bbox_norm=35.0, img_w=W, img_h=H,
+                scale_w=orig_w / W, scale_h=orig_h / H,
+            )
+            per_class_pred[cls_name].append(
+                {"image_id": item["image_id"], "boxes": boxes_pred}
+            )
+
+            gt_vocab = TRAFFICCAMNET_GT_VOCAB.get(cls_name, {cls_name})
+            gt_boxes = []
+            for det in item.get("detections", []):
+                if det.get("category", "").lower() not in gt_vocab:
+                    continue
+                b = det.get("bbox2d", det.get("box2d", {}))
+                if b:
+                    gt_boxes.append([b["x1"], b["y1"], b["x2"], b["y2"]])
+            per_class_gt[cls_name].append(
+                {"image_id": item["image_id"], "boxes": gt_boxes}
+            )
+
+    per_class_metrics = {}
+    for cls_name in eval_classes:
+        m_cls = compute_detection_metrics(
+            per_class_pred[cls_name], per_class_gt[cls_name],
+            conf_threshold=conf_thr,
         )
+        per_class_metrics[cls_name] = m_cls.to_dict()
 
-        predictions.append({"image_id": item["image_id"], "boxes": boxes_pred})
+    # Aggregate (macro) — по классам с num_gt > 0
+    eligible = [v for v in per_class_metrics.values() if v["num_gt"] > 0]
+    if eligible:
+        macro = {
+            "precision": sum(v["precision"] for v in eligible) / len(eligible),
+            "recall": sum(v["recall"] for v in eligible) / len(eligible),
+            "f1": sum(v["f1"] for v in eligible) / len(eligible),
+            "ap": sum(v["ap"] for v in eligible) / len(eligible),
+            "num_classes_evaluated": len(eligible),
+        }
+    else:
+        macro = {"precision": 0, "recall": 0, "f1": 0, "ap": 0,
+                 "num_classes_evaluated": 0}
 
-        # Ground truth: BDD100k detections labeled 'car'
-        gt_boxes = []
-        for det in item.get("detections", []):
-            if det.get("category", "").lower() not in {"car"}:
-                continue
-            b = det.get("bbox2d", det.get("box2d", {}))
-            if b:
-                gt_boxes.append([b["x1"], b["y1"], b["x2"], b["y2"]])
-        ground_truths.append({"image_id": item["image_id"], "boxes": gt_boxes})
+    # Car metrics остаются как primary (для backward-compat sparkline в SUMMARY)
+    car_m = per_class_metrics.get("car", {})
+    primary = {
+        "precision": car_m.get("precision", 0.0),
+        "recall": car_m.get("recall", 0.0),
+        "f1": car_m.get("f1", 0.0),
+        "ap": car_m.get("ap", 0.0),
+        "map50": car_m.get("map50", 0.0),
+        "num_gt": car_m.get("num_gt", 0),
+        "num_pred": car_m.get("num_pred", 0),
+        "num_tp": car_m.get("num_tp", 0),
+    }
+    primary["macro"] = macro
+    primary["per_class"] = per_class_metrics
+    primary["conf_thr"] = conf_thr
 
-    m = compute_detection_metrics(predictions, ground_truths)
     thresholds = {"precision": 0.90, "recall": 0.85, "f1": 0.87}
-    status = check_thresholds(m.to_dict(), thresholds)
+    status = check_thresholds(primary, thresholds)
 
-    result = {"metrics": m.to_dict(), "thresholds": status}
+    result = {"metrics": primary, "thresholds": status}
     (results_dir / "metrics.json").write_text(json.dumps(result, indent=2))
-    log.info(f"TrafficCamNet: P={m.precision:.3f} R={m.recall:.3f} F1={m.f1:.3f} AP={m.ap:.3f}")
+    log.info(
+        f"TrafficCamNet (car): P={primary['precision']:.3f} R={primary['recall']:.3f} "
+        f"F1={primary['f1']:.3f} AP={primary['ap']:.3f} | macro F1={macro['f1']:.3f} "
+        f"over {macro['num_classes_evaluated']} classes (conf_thr={conf_thr})"
+    )
     return result
 
 
@@ -234,7 +303,15 @@ NGC_MAKES_LOWER = [m.lower() for m in NGC_MAKES]
 
 
 def normalize_brand(brand: str) -> str:
+    # Substring match against NGC 20 makes. Empty/short inputs must NOT match —
+    # previously `"" in "acura"` silently routed missing brands to "acura",
+    # collapsing the entire eval to one class (see Goal 4 deferred-work.md).
     b = brand.lower().strip()
+    if len(b) < 3:
+        return b
+    for ngc in NGC_MAKES_LOWER:
+        if ngc == b:
+            return ngc
     for ngc in NGC_MAKES_LOWER:
         if ngc in b or b in ngc:
             return ngc
@@ -319,11 +396,38 @@ def eval_vehiclemakenet(cfg: dict) -> dict:
 
 # ─── VehicleTypeNet ───────────────────────────────────────────────────────────
 
-BIT_TO_TYPENET = {
-    "bus": "largevehicle", "microbus": "largevehicle",
-    "minivan": "van", "van": "van",
-    "sedan": "sedan", "suv": "suv", "truck": "truck",
-}
+# Goal 4.3: BIT-Vehicle (Kaggle-blocked) → Stanford Cars 8K test + class-name →
+# VehicleTypeNet 6 classes mapping. Stanford classes are formatted as
+# "<Make> <Model> <BodyType> <Year>" — body type ищется по ключевым словам.
+# §7.5 research-datasets-validation.md описывает требование mapping table.
+
+# Keyword priority (longer/more specific first to avoid e.g. "Cab" matching inside other words)
+STANFORD_BODY_KEYWORDS = [
+    ("convertible", "coupe"),
+    ("hatchback", "sedan"),
+    ("minivan", "van"),
+    ("crew cab", "truck"),
+    ("extended cab", "truck"),
+    ("regular cab", "truck"),
+    ("cargo van", "van"),
+    ("supercab", "truck"),
+    ("wagon", "sedan"),
+    ("sedan", "sedan"),
+    ("coupe", "coupe"),
+    ("suv", "suv"),
+    ("hummer", "suv"),       # AM General Hummer SUV
+    ("van", "van"),
+    ("cab", "truck"),
+]
+
+
+def derive_typenet_label(stanford_class: str) -> str:
+    """Stanford "Acura RL Sedan 2012" → "sedan". Returns "" if no keyword matches."""
+    s = stanford_class.lower()
+    for kw, typenet in STANFORD_BODY_KEYWORDS:
+        if kw in s:
+            return typenet
+    return ""
 
 
 def eval_vehicletypenet(cfg: dict) -> dict:
@@ -343,19 +447,69 @@ def eval_vehicletypenet(cfg: dict) -> dict:
     sess = get_ort_session(str(model_path))
     input_name = sess.get_inputs()[0].name
 
-    # Discover BIT-Vehicle images and their labels from directory structure
-    images = []
-    for type_dir in data_dir.iterdir():
-        if not type_dir.is_dir():
-            continue
-        bit_label = type_dir.name.lower()
-        typenet_label = BIT_TO_TYPENET.get(bit_label, bit_label)
-        for img_path in type_dir.glob("*.jpg"):
+    # Stanford Cars (primary, Goal 4.3)
+    sc_meta = data_dir / "test.json"
+    sc_images = data_dir / "images"
+    bit_legacy = sc_images.exists() is False and data_dir.exists()
+
+    images: list[tuple[Path, str]] = []
+    mapping_audit: list[dict] = []
+    skipped_no_mapping = 0
+
+    if sc_meta.exists() and sc_images.exists():
+        log.info(f"VehicleTypeNet: using Stanford Cars test from {data_dir}")
+        with open(sc_meta) as f:
+            records = json.load(f)
+        for rec in records:
+            label_str = (rec.get("label") or "").strip()
+            typenet_label = derive_typenet_label(label_str)
+            if not typenet_label:
+                skipped_no_mapping += 1
+                continue
+            mapping_audit.append({"stanford_class": label_str, "typenet": typenet_label})
+            img_path = sc_images / rec["file_name"]
             images.append((img_path, typenet_label))
+    elif bit_legacy:
+        # Legacy BIT-Vehicle path: directory-per-class
+        log.warning("VehicleTypeNet: Stanford Cars not found, falling back to BIT-Vehicle layout")
+        BIT_TO_TYPENET = {
+            "bus": "largevehicle", "microbus": "largevehicle",
+            "minivan": "van", "van": "van",
+            "sedan": "sedan", "suv": "suv", "truck": "truck",
+        }
+        for type_dir in data_dir.iterdir():
+            if not type_dir.is_dir():
+                continue
+            bit_label = type_dir.name.lower()
+            typenet_label = BIT_TO_TYPENET.get(bit_label, bit_label)
+            for img_path in type_dir.glob("*.jpg"):
+                images.append((img_path, typenet_label))
+    else:
+        log.error(f"VehicleTypeNet: neither Stanford Cars {sc_meta} nor BIT-Vehicle layout found in {data_dir}")
+        return {"error": "dataset not found"}
 
     if not images:
-        log.error(f"No BIT-Vehicle images found in {data_dir}")
-        return {"error": "dataset not found"}
+        log.error(f"VehicleTypeNet: no images discovered in {data_dir}")
+        return {"error": "no images"}
+
+    log.info(
+        f"VehicleTypeNet: {len(images)} images; skipped {skipped_no_mapping} "
+        f"(no body keyword in Stanford class name)"
+    )
+
+    # Сохраним audit-таблицу для воспроизводимости §7.5
+    if mapping_audit:
+        audit_path = data_dir / "type_mapping.csv"
+        import csv
+        seen = {}
+        for row in mapping_audit:
+            seen[row["stanford_class"]] = row["typenet"]
+        with open(audit_path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["stanford_class", "typenet"])
+            for cls, t in sorted(seen.items()):
+                w.writerow([cls, t])
+        log.info(f"VehicleTypeNet: wrote mapping audit ({len(seen)} unique classes) → {audit_path}")
 
     predictions, ground_truths = [], []
     confusion = np.zeros((len(labels_norm), len(labels_norm)), dtype=int)
@@ -806,6 +960,10 @@ EVAL_CONFIGS = {
         "data_dir": "data/bdd100k",
         "results_dir": "results/trafficcamnet",
         "eval_fn": eval_trafficcamnet,
+        # Goal 4: multi-class evaluation + lower conf_thr под cross-domain (COCO street-level).
+        # Когда BDD100K val 10K окажется доступен на ssh9 — можно поднять до 0.4 (in-domain).
+        "conf_thr": 0.2,
+        "eval_classes": ["car", "person", "bicycle", "road_sign"],
     },
     "vehiclemakenet": {
         "model_path": "models/vehiclemakenet/resnet18_pruned.onnx",
@@ -817,7 +975,9 @@ EVAL_CONFIGS = {
     "vehicletypenet": {
         "model_path": "models/vehicletypenet/resnet18_pruned.onnx",
         "labels_path": "models/vehicletypenet/labels.txt",
-        "data_dir": "data/bit_vehicle",
+        # Goal 4.3: switched from BIT-Vehicle (Kaggle-blocked) to Stanford Cars test.
+        # Body type derived from class name via STANFORD_BODY_KEYWORDS (§7.5 mapping).
+        "data_dir": "data/stanford_cars",
         "results_dir": "results/vehicletypenet",
         "eval_fn": eval_vehicletypenet,
     },
