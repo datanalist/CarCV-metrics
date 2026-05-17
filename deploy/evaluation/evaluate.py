@@ -727,7 +727,7 @@ def eval_nomeroff_ocr(cfg: dict) -> dict:
             # texts: list per image, each list of strings (one per detected plate)
             pred_text = ""
             if texts and texts[0]:
-                first = texts[0][0] if isinstance(texts[0], list) else texts[0]
+                first = texts[0][0] if isinstance(texts[0], (list, tuple)) else texts[0]
                 pred_text = (first or "").upper().strip()
         except Exception as e:
             log.warning(f"nomeroff OCR failed on {img_path.name}: {e}")
