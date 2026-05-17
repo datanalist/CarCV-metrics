@@ -1,0 +1,22 @@
+{
+  "metrics": {
+    "char_accuracy": 0.9995,
+    "full_plate_accuracy": 0.9978,
+    "char_error_rate": 0.0005,
+    "num_samples": 4893
+  },
+  "thresholds": {
+    "char_accuracy": {
+      "value": 0.9995,
+      "threshold": 0.9,
+      "status": "PASS"
+    },
+    "full_plate_accuracy": {
+      "value": 0.9978,
+      "threshold": 0.8,
+      "status": "PASS"
+    }
+  },
+  "skipped": 0,
+  "model": "nomeroff-net NumberPlateTextReading direct (RU)"
+}
