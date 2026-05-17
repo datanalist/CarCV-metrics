@@ -27,14 +27,17 @@
 
 ---
 
-## Goal 3 — Aggregation: SUMMARY.md generator + post-processing notebook (deferred 2026-05-17)
+## Goal 3 — Aggregation: SUMMARY.md generator + post-processing notebook (partial DONE 2026-05-17)
 
 **Зачем:** Автоматизировать сборку `results/SUMMARY.md` (правило из `CLAUDE.md`) и предоставить notebook для пост-обработки.
 
-**Scope:**
-- Скрипт-агрегатор `results_collected/{host}/results/*.json` → единый `results/SUMMARY.md` с per-модельными метриками (Precision/Recall/F1/mAP@0.5 для detection; Top-1/Top-3/Accuracy для classification; Full Plate Accuracy/Character Accuracy для LPR).
-- Сегментация метрик по `weather × timeofday × scene` для BDD100K (метаданные доступны).
-- `notebooks/post_processing.ipynb` — воспроизводимый ноутбук для plots в `plots/` (PNG): confusion matrices, PR-curves, error breakdown.
+**DONE (MVP):**
+- ✅ `deploy/evaluation/aggregate_summary.py` — CLI-агрегатор: обходит `results_collected/**/metrics.json` (поддерживает обе схемы — `qudata2/<model>/` и `<host>/results/<model>/`), классифицирует семейство по ключам метрик, пишет `results/SUMMARY.md` с тремя секциями (Overall table, US vs Nomeroff comparison, Detailed Results).
+- ✅ `notebooks/post_processing.ipynb` — воспроизводимый notebook (`uv run python -m jupyter nbconvert --execute …` проходит без ошибок). Генерирует 5 PNG в `plots/`: `pass_fail_by_family`, `detection_metrics`, `ocr_metrics`, `classification_metrics`, `us_vs_nomeroff`.
+
+**Deferred sub-items:**
+- ⏳ **PR-curves / confusion matrices / per-image error breakdown.** Требует расширения `evaluate.py`: писать per-sample predictions (например, `results/<model>/predictions.parquet` с колонками `image_id, gt, pred, score`) под флагом `--save-predictions`. После этого notebook расширяется отдельной итерацией.
+- ⏳ **Сегментация по `weather × timeofday × scene` (BDD100K).** Не применимо сейчас — TrafficCamNet прогонялся на COCO val2017, BDD-метаданных нет. Зависит от **Goal 4 §6.5 dataset migration** (переход на BDD100K val 10K).
 
 **Зависит от:** Goal 2 ✅ (результаты в `results_collected/{ssh1,ssh9}.qudata.ai/results/`).
 
