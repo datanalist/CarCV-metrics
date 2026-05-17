@@ -520,12 +520,13 @@ def eval_nomeroff_lpd(cfg: dict) -> dict:
             continue
 
         try:
-            (images, bboxs, _points, _zones, _region_ids, _region_names,
+            (_images, bboxs, _points, _zones, _region_ids, _region_names,
              _count_lines, _confidences, _texts) = detector([str(img_path)])
             # bboxs: list per image, each [x1,y1,x2,y2,conf,cls] per detection
             preds_per_img = [[float(b[0]), float(b[1]), float(b[2]), float(b[3]),
                               float(b[4]) if len(b) > 4 else 1.0]
-                             for b in (bboxs[0] if bboxs else [])]
+                             for b in ((bboxs[0] or []) if bboxs else [])
+                             if b is not None]
         except Exception as e:
             log.warning(f"nomeroff LPD failed on {img_name}: {e}")
             skipped += 1
