@@ -672,6 +672,84 @@ def eval_lprnet(cfg: dict) -> dict:
     return result
 
 
+# ─── Nomeroff OCR (RU) ───────────────────────────────────────────────────────
+
+def eval_nomeroff_ocr(cfg: dict) -> dict:
+    """RU OCR через nomeroff-net на готовых кропах из data/nomeroff_ocr_ru.
+    Замена US-обученного LPRNet для RU-сегмента (см. eval_lprnet выше)."""
+    data_dir = ROOT / cfg["data_dir"]
+    results_dir = ROOT / cfg["results_dir"]
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from nomeroff_net import pipeline
+    except ImportError as e:
+        log.error(f"nomeroff-net not installed on this host: {e}")
+        return {"error": "nomeroff-net not installed"}
+
+    val_img_dir = next(data_dir.glob("**/val/img"), None)
+    val_ann_dir = next(data_dir.glob("**/val/ann"), None)
+    if not val_img_dir or not val_ann_dir:
+        log.error(f"Nomeroff OCR RU val/img + val/ann not found in {data_dir}")
+        return {"error": "dataset not found"}
+
+    items = []
+    for ann_file in val_ann_dir.glob("*.json"):
+        with open(ann_file) as f:
+            data = json.load(f)
+        stem = ann_file.stem
+        img_path = next((p for p in val_img_dir.glob(f"{stem}.*")), None)
+        if img_path is None:
+            continue
+        gt_text = (data.get("description") or data.get("name") or "").upper().strip()
+        if gt_text:
+            items.append({"img_path": img_path, "text": gt_text})
+
+    log.info(f"Nomeroff OCR: loaded {len(items)} samples from {data_dir.name}")
+
+    ocr = pipeline("number_plate_text_reading", image_loader="opencv",
+                   presets={"ru": {"for_regions": ["ru"]}})
+
+    predictions, ground_truths = [], []
+    skipped = 0
+
+    for item in tqdm(items, desc="Nomeroff OCR"):
+        img_path = item["img_path"]
+        gt_text = item["text"]
+        img = cv2.imread(str(img_path))
+        if img is None:
+            skipped += 1
+            continue
+
+        try:
+            (_images, _bboxs, _points, _zones, _region_ids, _region_names,
+             _count_lines, _confidences, texts) = ocr([str(img_path)])
+            # texts: list per image, each list of strings (one per detected plate)
+            pred_text = ""
+            if texts and texts[0]:
+                first = texts[0][0] if isinstance(texts[0], list) else texts[0]
+                pred_text = (first or "").upper().strip()
+        except Exception as e:
+            log.warning(f"nomeroff OCR failed on {img_path.name}: {e}")
+            skipped += 1
+            continue
+
+        predictions.append({"image_id": img_path.name, "text": pred_text})
+        ground_truths.append({"image_id": img_path.name, "text": gt_text})
+
+    log.info(f"Nomeroff OCR: processed {len(predictions)} samples, skipped {skipped}")
+
+    m = compute_ocr_metrics(predictions, ground_truths)
+    thresholds = {"char_accuracy": 0.90, "full_plate_accuracy": 0.80}
+    status = check_thresholds(m.to_dict(), thresholds)
+
+    result = {"metrics": m.to_dict(), "thresholds": status,
+              "skipped": skipped, "model": "nomeroff-net text_reading (RU)"}
+    (results_dir / "metrics.json").write_text(json.dumps(result, indent=2))
+    log.info(f"Nomeroff OCR: CharAcc={m.char_accuracy:.3f} PlateAcc={m.full_plate_accuracy:.3f}")
+    return result
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 EVAL_CONFIGS = {
@@ -712,6 +790,11 @@ EVAL_CONFIGS = {
         "data_dir": "data/nomeroff_ocr_ru",
         "results_dir": "results/lprnet",
         "eval_fn": eval_lprnet,
+    },
+    "nomeroff_ocr": {
+        "data_dir": "data/nomeroff_ocr_ru",
+        "results_dir": "results/nomeroff_ocr",
+        "eval_fn": eval_nomeroff_ocr,
     },
 }
 
