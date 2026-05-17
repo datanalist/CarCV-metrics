@@ -687,23 +687,24 @@ def eval_nomeroff_ocr(cfg: dict) -> dict:
     """RU OCR через nomeroff-net на готовых кропах из data/nomeroff_ocr_ru.
     Замена US-обученного LPRNet для RU-сегмента (см. eval_lprnet выше).
 
-    Использует pipeline("number_plate_detection_and_reading") — единственный
-    pipeline, принимающий сырые пути к изображениям и возвращающий тексты.
-    pipeline("number_plate_text_reading") требует на входе предобработанные
-    кропы в формате (zone, region_name, count_lines, preprocessed_np) и
-    не принимает пути к файлам напрямую.
+    Использует NumberPlateTextReading с DumpyImageLoader напрямую — без YOLO
+    детекции. number_plate_detection_and_reading запускал бы YOLO на уже
+    вырезанных кропах и давал неправильные результаты (несколько псевдо-bbox
+    вместо одного полного текста). NumberPlateTextReading принимает кроп как
+    numpy-массив и возвращает через unzip 2 слота: (texts, images).
 
-    number_plate_detection_and_reading возвращает через unzip 9 слотов:
-    (images, images_bboxs, images_points, zones, region_ids, region_names,
-     count_lines, confidences, texts)
+    PyTorch >= 2.6 изменил дефолт weights_only=True в torch.load, что ломает
+    загрузку чекпойнтов nomeroff-net (содержат StrLabelConverter). Временная
+    обёртка torch.load с weights_only=False применяется только при инициализации.
     """
     data_dir = ROOT / cfg["data_dir"]
     results_dir = ROOT / cfg["results_dir"]
     results_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        from nomeroff_net import pipeline
         from nomeroff_net.tools import unzip as nomeroff_unzip
+        from nomeroff_net.pipelines.number_plate_text_reading import NumberPlateTextReading
+        from nomeroff_net.image_loaders import DumpyImageLoader
     except ImportError as e:
         log.error(f"nomeroff-net not installed on this host: {e}")
         return {"error": "nomeroff-net not installed"}
@@ -728,11 +729,31 @@ def eval_nomeroff_ocr(cfg: dict) -> dict:
 
     log.info(f"Nomeroff OCR: loaded {len(items)} samples from {data_dir.name}")
 
-    # Use detection_and_reading (end-to-end) with RU presets.
-    # presets kwarg is accepted by NumberPlateDetectionAndReading.__init__ and
-    # forwarded to NumberPlateTextReading, matching DEFAULT_PRESETS key "ru".
-    ocr = pipeline("number_plate_detection_and_reading", image_loader="opencv",
-                   presets={"ru": {"for_regions": ["ru"]}})
+    # PyTorch >= 2.6 changed torch.load default to weights_only=True, which breaks
+    # nomeroff-net's old-format checkpoint loading (contains StrLabelConverter).
+    # Monkey-patch torch.load to pass weights_only=False during pipeline init only.
+    import torch as _torch
+    _orig_torch_load = _torch.load
+
+    def _torch_load_unsafe(f, *args, **kwargs):
+        kwargs.setdefault("weights_only", False)
+        return _orig_torch_load(f, *args, **kwargs)
+
+    _torch.load = _torch_load_unsafe
+    try:
+        # Use NumberPlateTextReading directly to avoid running YOLO on already-cropped
+        # plate images. DumpyImageLoader passes numpy arrays through unchanged.
+        text_reader = NumberPlateTextReading(
+            task="number_plate_text_reading",
+            image_loader="opencv",
+            presets={"ru": {"for_regions": ["ru"], "for_count_lines": [1],
+                            "model_path": "latest"}},
+            default_label="ru",
+            off_number_plate_classification=True,
+        )
+        text_reader.image_loader = DumpyImageLoader()
+    finally:
+        _torch.load = _orig_torch_load
 
     predictions, ground_truths = [], []
     skipped = 0
@@ -746,17 +767,13 @@ def eval_nomeroff_ocr(cfg: dict) -> dict:
             continue
 
         try:
-            # Returns list of per-image result tuples; unzip gives 9 slots:
-            # (images, images_bboxs, images_points, zones, region_ids,
-            #  region_names, count_lines, confidences, texts)
-            raw = ocr([str(img_path)])
-            (_images, _bboxs, _points, _zones, _region_ids, _region_names,
-             _count_lines, _confidences, texts) = nomeroff_unzip(raw)
-            # texts: list per image, each list of strings (one per detected plate)
-            pred_text = ""
-            if texts and texts[0]:
-                first = texts[0][0] if isinstance(texts[0], (list, tuple)) else texts[0]
-                pred_text = (first or "").upper().strip()
+            # NumberPlateTextReading input: list of (zone_array, region_label,
+            # count_lines, preprocessed_np). Returns list of (text, zone_array).
+            # After unzip: (texts_tuple, images_tuple), each with one element
+            # per input.
+            raw = text_reader([(img, "ru", 1, None)])
+            texts, _images = nomeroff_unzip(raw)
+            pred_text = (texts[0] if texts else "").upper().strip()
         except Exception as e:
             log.warning(f"nomeroff OCR failed on {img_path.name}: {e}")
             skipped += 1
