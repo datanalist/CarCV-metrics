@@ -482,13 +482,19 @@ def eval_lpdnet(cfg: dict) -> dict:
 
 def eval_nomeroff_lpd(cfg: dict) -> dict:
     """Детекция номеров через nomeroff-net на VIA-датасете nomeroff_lp.
-    Замена US-обученного LPDNet для RU-сегмента (см. eval_lpdnet выше)."""
+    Замена US-обученного LPDNet для RU-сегмента (см. eval_lpdnet выше).
+
+    Использует pipeline("number_plate_localization"), который возвращает
+    2 слота через unzip: (images_bboxs, images). Каждый bbox — список
+    [x1, y1, x2, y2, conf, cls_int, kps_normalized] на детекцию.
+    """
     data_dir = ROOT / cfg["data_dir"]
     results_dir = ROOT / cfg["results_dir"]
     results_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         from nomeroff_net import pipeline
+        from nomeroff_net.tools import unzip as nomeroff_unzip
     except ImportError as e:
         log.error(f"nomeroff-net not installed on this host: {e}")
         return {"error": "nomeroff-net not installed"}
@@ -520,9 +526,12 @@ def eval_nomeroff_lpd(cfg: dict) -> dict:
             continue
 
         try:
-            (_images, bboxs, _points, _zones, _region_ids, _region_names,
-             _count_lines, _confidences, _texts) = detector([str(img_path)])
-            # bboxs: list per image, each [x1,y1,x2,y2,conf,cls] per detection
+            # number_plate_localization returns unzip([model_outputs, images]):
+            # a list of (bboxs_per_img, img_array) tuples — 2 slots after unzip.
+            # Each bbox element: [x1, y1, x2, y2, conf, cls_int, kps_normalized]
+            raw = detector([str(img_path)])
+            images_bboxs, _images = nomeroff_unzip(raw)
+            bboxs = images_bboxs  # list indexed by image; bboxs[0] for first image
             preds_per_img = [[float(b[0]), float(b[1]), float(b[2]), float(b[3]),
                               float(b[4]) if len(b) > 4 else 1.0]
                              for b in ((bboxs[0] or []) if bboxs else [])
@@ -676,13 +685,25 @@ def eval_lprnet(cfg: dict) -> dict:
 
 def eval_nomeroff_ocr(cfg: dict) -> dict:
     """RU OCR через nomeroff-net на готовых кропах из data/nomeroff_ocr_ru.
-    Замена US-обученного LPRNet для RU-сегмента (см. eval_lprnet выше)."""
+    Замена US-обученного LPRNet для RU-сегмента (см. eval_lprnet выше).
+
+    Использует pipeline("number_plate_detection_and_reading") — единственный
+    pipeline, принимающий сырые пути к изображениям и возвращающий тексты.
+    pipeline("number_plate_text_reading") требует на входе предобработанные
+    кропы в формате (zone, region_name, count_lines, preprocessed_np) и
+    не принимает пути к файлам напрямую.
+
+    number_plate_detection_and_reading возвращает через unzip 9 слотов:
+    (images, images_bboxs, images_points, zones, region_ids, region_names,
+     count_lines, confidences, texts)
+    """
     data_dir = ROOT / cfg["data_dir"]
     results_dir = ROOT / cfg["results_dir"]
     results_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         from nomeroff_net import pipeline
+        from nomeroff_net.tools import unzip as nomeroff_unzip
     except ImportError as e:
         log.error(f"nomeroff-net not installed on this host: {e}")
         return {"error": "nomeroff-net not installed"}
@@ -707,7 +728,10 @@ def eval_nomeroff_ocr(cfg: dict) -> dict:
 
     log.info(f"Nomeroff OCR: loaded {len(items)} samples from {data_dir.name}")
 
-    ocr = pipeline("number_plate_text_reading", image_loader="opencv",
+    # Use detection_and_reading (end-to-end) with RU presets.
+    # presets kwarg is accepted by NumberPlateDetectionAndReading.__init__ and
+    # forwarded to NumberPlateTextReading, matching DEFAULT_PRESETS key "ru".
+    ocr = pipeline("number_plate_detection_and_reading", image_loader="opencv",
                    presets={"ru": {"for_regions": ["ru"]}})
 
     predictions, ground_truths = [], []
@@ -722,8 +746,12 @@ def eval_nomeroff_ocr(cfg: dict) -> dict:
             continue
 
         try:
+            # Returns list of per-image result tuples; unzip gives 9 slots:
+            # (images, images_bboxs, images_points, zones, region_ids,
+            #  region_names, count_lines, confidences, texts)
+            raw = ocr([str(img_path)])
             (_images, _bboxs, _points, _zones, _region_ids, _region_names,
-             _count_lines, _confidences, texts) = ocr([str(img_path)])
+             _count_lines, _confidences, texts) = nomeroff_unzip(raw)
             # texts: list per image, each list of strings (one per detected plate)
             pred_text = ""
             if texts and texts[0]:
@@ -744,7 +772,7 @@ def eval_nomeroff_ocr(cfg: dict) -> dict:
     status = check_thresholds(m.to_dict(), thresholds)
 
     result = {"metrics": m.to_dict(), "thresholds": status,
-              "skipped": skipped, "model": "nomeroff-net text_reading (RU)"}
+              "skipped": skipped, "model": "nomeroff-net detection_and_reading (RU)"}
     (results_dir / "metrics.json").write_text(json.dumps(result, indent=2))
     log.info(f"Nomeroff OCR: CharAcc={m.char_accuracy:.3f} PlateAcc={m.full_plate_accuracy:.3f}")
     return result
