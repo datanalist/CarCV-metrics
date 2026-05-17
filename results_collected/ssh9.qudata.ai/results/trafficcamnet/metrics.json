@@ -1,0 +1,79 @@
+{
+  "metrics": {
+    "precision": 0.0819,
+    "recall": 0.0528,
+    "f1": 0.0642,
+    "ap": 0.0192,
+    "map50": 0.0192,
+    "num_gt": 1932,
+    "num_pred": 1245,
+    "num_tp": 102,
+    "macro": {
+      "precision": 0.127025,
+      "recall": 0.083125,
+      "f1": 0.09874999999999999,
+      "ap": 0.058475,
+      "num_classes_evaluated": 4
+    },
+    "per_class": {
+      "car": {
+        "precision": 0.0819,
+        "recall": 0.0528,
+        "f1": 0.0642,
+        "ap": 0.0192,
+        "map50": 0.0192,
+        "num_gt": 1932,
+        "num_pred": 1245,
+        "num_tp": 102
+      },
+      "person": {
+        "precision": 0.36,
+        "recall": 0.2435,
+        "f1": 0.2905,
+        "ap": 0.1947,
+        "map50": 0.1947,
+        "num_gt": 11004,
+        "num_pred": 7441,
+        "num_tp": 2679
+      },
+      "bicycle": {
+        "precision": 0.0429,
+        "recall": 0.0095,
+        "f1": 0.0155,
+        "ap": 0.0152,
+        "map50": 0.0152,
+        "num_gt": 316,
+        "num_pred": 70,
+        "num_tp": 3
+      },
+      "road_sign": {
+        "precision": 0.0233,
+        "recall": 0.0267,
+        "f1": 0.0248,
+        "ap": 0.0048,
+        "map50": 0.0048,
+        "num_gt": 75,
+        "num_pred": 86,
+        "num_tp": 2
+      }
+    },
+    "conf_thr": 0.2
+  },
+  "thresholds": {
+    "precision": {
+      "value": 0.0819,
+      "threshold": 0.9,
+      "status": "FAIL"
+    },
+    "recall": {
+      "value": 0.0528,
+      "threshold": 0.85,
+      "status": "FAIL"
+    },
+    "f1": {
+      "value": 0.0642,
+      "threshold": 0.87,
+      "status": "FAIL"
+    }
+  }
+}

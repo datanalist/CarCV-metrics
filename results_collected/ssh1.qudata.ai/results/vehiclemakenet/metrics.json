@@ -1,0 +1,22 @@
+{
+  "metrics": {
+    "top1_accuracy": 0.002,
+    "top3_accuracy": 0.0147,
+    "num_samples": 4960,
+    "per_class_accuracy": {
+      "acura": 0.002
+    }
+  },
+  "thresholds": {
+    "top1_accuracy": {
+      "value": 0.002,
+      "threshold": 0.7,
+      "status": "FAIL"
+    },
+    "top3_accuracy": {
+      "value": 0.0147,
+      "threshold": 0.85,
+      "status": "FAIL"
+    }
+  }
+}
