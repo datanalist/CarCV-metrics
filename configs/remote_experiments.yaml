@@ -1,0 +1,26 @@
+# Remote experiment orchestration configuration
+# Used by: deploy/scripts/run_remote.py
+#
+# servers[].host        — SSH hostname (must resolve via ~/.ssh/config or /etc/hosts)
+# servers[].experiments — experiments to run on this server
+#                         valid: trafficcamnet, vehiclemakenet, vehicletypenet, lpdnet, lprnet
+#
+# remote.deploy_dir     — directory on the remote host where deploy/ is synced
+# remote.venv           — Python virtualenv name inside deploy_dir
+# remote.results_local  — local directory where results are collected
+
+servers:
+  - host: gpu-server-1
+    experiments:
+      - trafficcamnet
+      - vehiclemakenet
+  - host: gpu-server-2
+    experiments:
+      - vehicletypenet
+      - lpdnet
+      - lprnet
+
+remote:
+  deploy_dir: ~/cars-eval
+  venv: venv
+  results_local: results_collected
