@@ -6,7 +6,8 @@
 # servers[].user           — SSH user (default $USER)
 # servers[].identity_file  — optional path to SSH private key (~ expanded locally)
 # servers[].experiments    — list to run on this host
-#                            valid: trafficcamnet, vehiclemakenet, vehicletypenet, lpdnet, lprnet
+#                            valid: trafficcamnet, vehiclemakenet, vehicletypenet,
+#                                   lpdnet, lprnet, nomeroff_lpd, nomeroff_ocr
 #
 # remote.deploy_dir        — directory on the remote host where deploy/ is rsynced
 # remote.venv              — Python virtualenv name inside deploy_dir
@@ -25,9 +26,13 @@ servers:
     user: root
     identity_file: ~/.ssh/qudata
     experiments:
-      - vehicletypenet
-      - lpdnet
-      - lprnet
+      # vehicletypenet skipped — BIT-Vehicle requires Kaggle auth (no public mirror);
+      # restoring needs either KAGGLE_USERNAME/KAGGLE_KEY or switch to Stanford Cars +
+      # Make→Type mapping per research-datasets-validation.md §6.5.
+      # lpdnet/lprnet (US-trained) moved out of active campaign — заменены на nomeroff_lpd/nomeroff_ocr (RU).
+      # Legacy baseline сохранён в results_collected/ssh9.qudata.ai/results/{lpdnet,lprnet}/.
+      - nomeroff_lpd
+      - nomeroff_ocr
 
 remote:
   deploy_dir: ~/cars-eval
