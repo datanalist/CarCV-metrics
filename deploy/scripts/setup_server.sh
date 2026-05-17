@@ -42,8 +42,10 @@ uv pip install -r requirements.txt
 # Also, nomeroff-net pulls in opencv-python (GUI) which conflicts with the
 # headless variant we need on headless servers; force reinstall headless.
 echo "    Installing nomeroff-net git dependencies..."
-pip install git+https://github.com/ria-com/modelhub-client.git --quiet
-pip install PyTurboJPEG --quiet
+uv pip install "git+https://github.com/ria-com/modelhub-client.git" --quiet \
+    || echo "    WARNING: modelhub-client install failed (nomeroff-net may not work)"
+uv pip install PyTurboJPEG --quiet \
+    || echo "    WARNING: PyTurboJPEG install failed (nomeroff-net may not work)"
 uv pip install "opencv-python-headless>=4.8" --reinstall --quiet
 
 # Create data directories

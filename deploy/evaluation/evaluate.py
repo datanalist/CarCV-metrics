@@ -732,6 +732,8 @@ def eval_nomeroff_ocr(cfg: dict) -> dict:
     # PyTorch >= 2.6 changed torch.load default to weights_only=True, which breaks
     # nomeroff-net's old-format checkpoint loading (contains StrLabelConverter).
     # Monkey-patch torch.load to pass weights_only=False during pipeline init only.
+    # NOTE: not thread-safe — eval_nomeroff_ocr must not run concurrently with
+    # other code that calls torch.load.
     import torch as _torch
     _orig_torch_load = _torch.load
 
@@ -789,7 +791,7 @@ def eval_nomeroff_ocr(cfg: dict) -> dict:
     status = check_thresholds(m.to_dict(), thresholds)
 
     result = {"metrics": m.to_dict(), "thresholds": status,
-              "skipped": skipped, "model": "nomeroff-net detection_and_reading (RU)"}
+              "skipped": skipped, "model": "nomeroff-net NumberPlateTextReading direct (RU)"}
     (results_dir / "metrics.json").write_text(json.dumps(result, indent=2))
     log.info(f"Nomeroff OCR: CharAcc={m.char_accuracy:.3f} PlateAcc={m.full_plate_accuracy:.3f}")
     return result
