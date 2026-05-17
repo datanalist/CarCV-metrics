@@ -478,6 +478,88 @@ def eval_lpdnet(cfg: dict) -> dict:
     return result
 
 
+# ─── Nomeroff LPD (RU plates) ────────────────────────────────────────────────
+
+def eval_nomeroff_lpd(cfg: dict) -> dict:
+    """Детекция номеров через nomeroff-net на VIA-датасете nomeroff_lp.
+    Замена US-обученного LPDNet для RU-сегмента (см. eval_lpdnet выше)."""
+    data_dir = ROOT / cfg["data_dir"]
+    results_dir = ROOT / cfg["results_dir"]
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from nomeroff_net import pipeline
+    except ImportError as e:
+        log.error(f"nomeroff-net not installed on this host: {e}")
+        return {"error": "nomeroff-net not installed"}
+
+    ann_file = next(data_dir.glob("**/val/via_region_data.json"), None)
+    if ann_file is None:
+        log.error(f"No val/via_region_data.json found in {data_dir}")
+        return {"error": "dataset not found"}
+
+    with open(ann_file) as f:
+        ann_data = json.load(f)
+    img_metadata = ann_data.get("_via_img_metadata", ann_data)
+    img_root = ann_file.parent
+
+    detector = pipeline("number_plate_localization", image_loader="opencv")
+
+    predictions, ground_truths = [], []
+    skipped = 0
+
+    for img_key, img_info in tqdm(img_metadata.items(), desc="Nomeroff LPD"):
+        img_name = img_info.get("filename", img_key)
+        img_path = img_root / img_name
+        if not img_path.exists():
+            skipped += 1
+            continue
+        img = cv2.imread(str(img_path))
+        if img is None:
+            skipped += 1
+            continue
+
+        try:
+            (images, bboxs, _points, _zones, _region_ids, _region_names,
+             _count_lines, _confidences, _texts) = detector([str(img_path)])
+            # bboxs: list per image, each [x1,y1,x2,y2,conf,cls] per detection
+            preds_per_img = [[float(b[0]), float(b[1]), float(b[2]), float(b[3]),
+                              float(b[4]) if len(b) > 4 else 1.0]
+                             for b in (bboxs[0] if bboxs else [])]
+        except Exception as e:
+            log.warning(f"nomeroff LPD failed on {img_name}: {e}")
+            skipped += 1
+            continue
+
+        predictions.append({"image_id": img_name, "boxes": preds_per_img})
+
+        gt_boxes = []
+        regions = img_info.get("regions", [])
+        if isinstance(regions, dict):
+            regions = list(regions.values())
+        for reg in regions:
+            shape = reg.get("shape_attributes", {})
+            if shape.get("name") == "rect":
+                x, y = shape["x"], shape["y"]
+                gt_boxes.append([x, y, x + shape["width"], y + shape["height"]])
+            elif shape.get("name") == "polygon":
+                xs, ys = shape["all_points_x"], shape["all_points_y"]
+                gt_boxes.append([min(xs), min(ys), max(xs), max(ys)])
+        ground_truths.append({"image_id": img_name, "boxes": gt_boxes})
+
+    log.info(f"Nomeroff LPD: processed {len(predictions)} images, skipped {skipped}")
+
+    m = compute_detection_metrics(predictions, ground_truths, conf_threshold=0.3)
+    thresholds = {"recall": 0.80, "precision": 0.70}
+    status = check_thresholds(m.to_dict(), thresholds)
+
+    result = {"metrics": m.to_dict(), "thresholds": status,
+              "skipped": skipped, "model": "nomeroff-net localization (RU)"}
+    (results_dir / "metrics.json").write_text(json.dumps(result, indent=2))
+    log.info(f"Nomeroff LPD: P={m.precision:.3f} R={m.recall:.3f} F1={m.f1:.3f}")
+    return result
+
+
 # ─── LPRNet ──────────────────────────────────────────────────────────────────
 
 # US LPRNet character set
@@ -618,6 +700,11 @@ EVAL_CONFIGS = {
         "data_dir": "data/nomeroff_lp",
         "results_dir": "results/lpdnet",
         "eval_fn": eval_lpdnet,
+    },
+    "nomeroff_lpd": {
+        "data_dir": "data/nomeroff_lp",
+        "results_dir": "results/nomeroff_lpd",
+        "eval_fn": eval_nomeroff_lpd,
     },
     "lprnet": {
         "model_path": "models/lprnet/us_lprnet_baseline18_deployable.onnx",
