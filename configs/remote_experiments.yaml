@@ -1,0 +1,35 @@
+# Remote experiment orchestration configuration
+# Used by: deploy/scripts/run_remote.py
+#
+# servers[].host           — SSH hostname or alias from ~/.ssh/config
+# servers[].port           — SSH port (default 22)
+# servers[].user           — SSH user (default $USER)
+# servers[].identity_file  — optional path to SSH private key (~ expanded locally)
+# servers[].experiments    — list to run on this host
+#                            valid: trafficcamnet, vehiclemakenet, vehicletypenet, lpdnet, lprnet
+#
+# remote.deploy_dir        — directory on the remote host where deploy/ is rsynced
+# remote.venv              — Python virtualenv name inside deploy_dir
+# remote.results_local     — local directory where results are collected (per-host subdirs)
+
+servers:
+  - host: ssh1.qudata.ai
+    port: 11598
+    user: root
+    identity_file: ~/.ssh/qudata
+    experiments:
+      - trafficcamnet
+      - vehiclemakenet
+  - host: ssh9.qudata.ai
+    port: 19478
+    user: root
+    identity_file: ~/.ssh/qudata
+    experiments:
+      - vehicletypenet
+      - lpdnet
+      - lprnet
+
+remote:
+  deploy_dir: ~/cars-eval
+  venv: venv
+  results_local: results_collected

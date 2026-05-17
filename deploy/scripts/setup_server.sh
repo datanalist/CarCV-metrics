@@ -20,10 +20,18 @@ fi
 
 export PATH="$HOME/.local/bin:$PATH"
 
-# Create virtual environment and install deps
+# Create virtual environment and install deps (idempotent)
+# NOTE: --system-site-packages is required so the venv can see the host's
+# pre-installed torch (provided by NVIDIA-driver host setup). Changing this
+# flag later requires a manual `rm -rf venv` on each host — the reuse branch
+# below never re-creates an existing venv.
 echo "[2/4] Creating Python environment..."
 cd "$(dirname "$0")/.."
-uv venv --python 3.12 venv
+if [ -d venv ]; then
+    echo "    venv already exists, reusing"
+else
+    uv venv --python 3.12 --system-site-packages venv
+fi
 source venv/bin/activate
 uv pip install -r requirements.txt
 
