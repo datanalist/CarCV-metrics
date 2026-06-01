@@ -71,3 +71,20 @@ def test_iter_vmmrdb_samples_caps_per_class(tmp_path):
     # элементы — (Path, make)
     p, m = samples[0]
     assert isinstance(p, Path) and isinstance(m, str)
+
+
+from dataset_prep import widerface_faces_to_detections  # noqa: E402
+
+
+def test_widerface_faces_to_detections():
+    faces = {"bbox": [[10.0, 20.0, 30.0, 40.0],   # x,y,w,h → x1,y1,x2,y2
+                      [5.0, 5.0, 0.0, 12.0]]}       # нулевая ширина → отброшен
+    dets = widerface_faces_to_detections(faces)
+    assert len(dets) == 1
+    assert dets[0]["category"] == "face"
+    assert dets[0]["box2d"] == {"x1": 10.0, "y1": 20.0, "x2": 40.0, "y2": 60.0}
+
+
+def test_widerface_empty():
+    assert widerface_faces_to_detections({}) == []
+    assert widerface_faces_to_detections({"bbox": []}) == []

@@ -64,3 +64,23 @@ def iter_vmmrdb_samples(root: Path, per_class_cap: int) -> list:
         for img in imgs[:per_class_cap]:
             samples.append((img, make))
     return samples
+
+
+def widerface_faces_to_detections(faces: dict) -> list:
+    """WIDER FACE faces-словарь HF → detections в формате пайплайна.
+
+    HF-схема: faces = {"bbox": [[x, y, w, h], ...], ...}. Боксы с нулевой/
+    отрицательной шириной или высотой отбрасываются (в WIDER FACE есть
+    вырожденные аннотации «invalid»).
+    """
+    dets = []
+    for bbox in faces.get("bbox", []):
+        x, y, w, h = bbox[0], bbox[1], bbox[2], bbox[3]
+        if w <= 0 or h <= 0:
+            continue
+        dets.append({
+            "category": "face",
+            "box2d": {"x1": float(x), "y1": float(y),
+                      "x2": float(x + w), "y2": float(y + h)},
+        })
+    return dets
