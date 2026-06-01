@@ -40,3 +40,27 @@ def bdd100k_to_labels(native: list) -> list:
             "scene": attrs.get("scene", ""),
         })
     return items
+
+
+def vmmrdb_make(dirname: str) -> str:
+    """Имя каталога VMMRdb '<make>_<model>_<year>' → марка (первый токен, lower)."""
+    return dirname.split("_")[0].lower().strip()
+
+
+def iter_vmmrdb_samples(root: Path, per_class_cap: int) -> list:
+    """Обойти каталоги-по-классам VMMRdb, вернуть детерминированный список
+    (image_path, make) с не более чем per_class_cap изображений на каталог.
+
+    Сортировка по имени каталога и по имени файла → воспроизводимый отбор.
+    """
+    root = Path(root)
+    samples = []
+    for class_dir in sorted(p for p in root.iterdir() if p.is_dir()):
+        make = vmmrdb_make(class_dir.name)
+        imgs = sorted(
+            p for p in class_dir.iterdir()
+            if p.suffix.lower() in {".jpg", ".jpeg", ".png"}
+        )
+        for img in imgs[:per_class_cap]:
+            samples.append((img, make))
+    return samples

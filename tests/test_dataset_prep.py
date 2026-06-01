@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "deploy" / "evaluation"))
 
 from dataset_prep import bdd100k_to_labels  # noqa: E402
+from dataset_prep import vmmrdb_make, iter_vmmrdb_samples  # noqa: E402
 
 
 def test_bdd100k_to_labels_basic():
@@ -41,3 +42,32 @@ def test_bdd100k_to_labels_basic():
                                                "x2": 357.8, "y2": 487.9}
     # второе изображение — без детекций, но присутствует
     assert out[1]["detections"] == []
+
+
+def test_vmmrdb_make_first_token_lowercased():
+    assert vmmrdb_make("Honda_Accord_2003") == "honda"
+    assert vmmrdb_make("BMW_3_Series_2010") == "bmw"
+    # многословные марки сворачиваются к первому токену (normalize_brand добьёт)
+    assert vmmrdb_make("Mercedes_Benz_C_Class_2008") == "mercedes"
+
+
+def test_iter_vmmrdb_samples_caps_per_class(tmp_path):
+    # каталоги-по-классам с изображениями
+    honda = tmp_path / "Honda_Civic_2005"
+    honda.mkdir()
+    for i in range(5):
+        (honda / f"img{i}.jpg").write_bytes(b"x")
+    bmw = tmp_path / "BMW_X5_2012"
+    bmw.mkdir()
+    (bmw / "a.jpg").write_bytes(b"x")
+
+    samples = iter_vmmrdb_samples(tmp_path, per_class_cap=3)
+    # Honda обрезана до 3, BMW — 1 → всего 4 пары
+    assert len(samples) == 4
+    makes = sorted({make for _, make in samples})
+    assert makes == ["bmw", "honda"]
+    # детерминированный отбор: одни и те же файлы при повторе
+    assert iter_vmmrdb_samples(tmp_path, per_class_cap=3) == samples
+    # элементы — (Path, make)
+    p, m = samples[0]
+    assert isinstance(p, Path) and isinstance(m, str)

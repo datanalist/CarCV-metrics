@@ -332,9 +332,9 @@ def eval_vehiclemakenet(cfg: dict) -> dict:
     labels = load_labels(labels_path)
     labels_norm = [l.strip().lower() for l in labels]
 
-    meta_path = data_dir / "sample_5k.json"
+    meta_path = data_dir / cfg.get("meta_file", "sample_5k.json")
     if not meta_path.exists():
-        log.error(f"mad-cars metadata not found: {meta_path}")
+        log.error(f"VehicleMakeNet metadata not found: {meta_path}")
         return {"error": "dataset not found"}
 
     with open(meta_path) as f:
@@ -968,7 +968,10 @@ EVAL_CONFIGS = {
     "vehiclemakenet": {
         "model_path": "models/vehiclemakenet/resnet18_pruned.onnx",
         "labels_path": "models/vehiclemakenet/labels.txt",
-        "data_dir": "data/mad_cars",
+        # Кампания 2026-06: VMMRdb (каталоги-по-классам → manifest.json),
+        # вместо mad-cars-суррогата. Марка = первый токен имени каталога.
+        "data_dir": "data/vmmrdb",
+        "meta_file": "manifest.json",
         "results_dir": "results/vehiclemakenet",
         "eval_fn": eval_vehiclemakenet,
     },
