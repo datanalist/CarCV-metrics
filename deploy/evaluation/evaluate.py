@@ -982,8 +982,8 @@ def eval_facedetect(cfg: dict) -> dict:
     # FaceNet input: 736×416 (W×H). Подтвердить из sess.get_inputs()[0].shape;
     # если модель статической формы — взять оттуда.
     ishape = sess.get_inputs()[0].shape
-    H = ishape[2] if isinstance(ishape[2], int) else 416
-    W = ishape[3] if isinstance(ishape[3], int) else 736
+    H = ishape[2] if len(ishape) == 4 and isinstance(ishape[2], int) else 416
+    W = ishape[3] if len(ishape) == 4 and isinstance(ishape[3], int) else 736
     conf_thr = float(cfg.get("conf_thr", 0.4))
     bbox_norm = float(cfg.get("bbox_norm", 35.0))
 
