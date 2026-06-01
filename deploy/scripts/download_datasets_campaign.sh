@@ -128,3 +128,52 @@ EOF
   fi
   echo "  готово: $(du -sh data/vmmrdb 2>/dev/null | cut -f1)"
 fi
+
+# ── WIDER FACE ────────────────────────────────────────────────────────────────
+if [ "$WHICH" = "widerface" ] || [ "$WHICH" = "all" ]; then
+  echo "=== [WIDER FACE] FaceDetect ==="
+  if [ -f data/widerface/labels.json ] && \
+     [ "$(ls data/widerface/images 2>/dev/null | wc -l)" -ge 2000 ]; then
+    echo "  [skip] data/widerface уже готов"
+  else
+    mkdir -p data/widerface/images
+    python - <<'EOF'
+import json, sys
+from pathlib import Path
+sys.path.insert(0, "evaluation")
+from dataset_prep import widerface_faces_to_detections
+
+from datasets import load_dataset
+ds = None
+for repo in ("wider_face", "CUHK-CSE/wider_face"):
+    try:
+        print(f"пробую {repo} (split=validation)…")
+        ds = load_dataset(repo, split="validation")
+        print(f"OK из {repo}: {len(ds)} примеров; колонки {ds.column_names}")
+        break
+    except Exception as e:
+        print(f"  не вышло: {type(e).__name__}: {e}")
+assert ds is not None, "все HF-зеркала WIDER FACE недоступны"
+
+img_dir = Path("data/widerface/images")
+img_dir.mkdir(parents=True, exist_ok=True)
+items = []
+for i, ex in enumerate(ds):
+    img = ex.get("image")
+    if img is None or not hasattr(img, "save"):
+        continue
+    fname = f"wf_{i:06d}.jpg"
+    dst = img_dir / fname
+    if not dst.exists():
+        img.convert("RGB").save(dst)
+    dets = widerface_faces_to_detections(ex.get("faces", {}) or {})
+    items.append({"image_id": f"wf_{i:06d}", "file_name": fname,
+                  "detections": dets})
+
+Path("data/widerface/labels.json").write_text(json.dumps(items))
+print(f"WIDER FACE val: {len(items)} изображений, "
+      f"{sum(len(it['detections']) for it in items)} лиц")
+EOF
+  fi
+  echo "  готово: $(du -sh data/widerface 2>/dev/null | cut -f1)"
+fi
