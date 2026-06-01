@@ -75,7 +75,7 @@ else
     FOUND=""
     for V in deployable_v1.0 pruned_quantized_v2.0.1 pruned_v2.0.1 deployable_onnx_v1.0; do
         FILES_JSON="$(wget -qO- "$BASE_URL/facenet/versions/$V/files" || true)"
-        ONNX_NAME="$(echo "$FILES_JSON" | grep -oE '"[^"]+\.onnx"' | head -1 | tr -d '"')"
+        ONNX_NAME="$(echo "$FILES_JSON" | grep -oE '"[^"/]+\.onnx"' | head -1 | tr -d '"')"
         if [ -n "$ONNX_NAME" ]; then
             echo "  нашёл $ONNX_NAME в версии $V"
             download_file "$BASE_URL/facenet/versions/$V/files/$ONNX_NAME" \
