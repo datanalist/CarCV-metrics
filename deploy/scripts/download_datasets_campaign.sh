@@ -109,9 +109,10 @@ from evaluate import normalize_brand, NGC_MAKES_LOWER
 
 out_img = Path("data/vmmrdb/images")
 out_img.mkdir(parents=True, exist_ok=True)
-records, kept = [], 0
+records, kept, skipped_ood = [], 0, 0
 for img_path, make in samples:
     if normalize_brand(make) not in NGC_MAKES_LOWER:
+        skipped_ood += 1
         continue
     fname = f"{kept:06d}_{img_path.name}"
     dst = out_img / fname
@@ -121,7 +122,8 @@ for img_path, make in samples:
     kept += 1
 
 Path("data/vmmrdb/manifest.json").write_text(json.dumps(records, ensure_ascii=False))
-print(f"VMMRdb manifest: {kept} изображений в 20 NGC-марках (cap={cap}/класс)")
+print(f"VMMRdb manifest: {kept} изображений в 20 NGC-марках "
+      f"({skipped_ood} отфильтровано как out-of-distribution, cap={cap}/класс)")
 EOF
   fi
   echo "  готово: $(du -sh data/vmmrdb 2>/dev/null | cut -f1)"
