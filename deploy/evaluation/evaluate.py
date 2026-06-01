@@ -951,6 +951,87 @@ def eval_nomeroff_ocr(cfg: dict) -> dict:
     return result
 
 
+# ─── FaceDetect (TAO FaceNet / DetectNet_v2) ──────────────────────────────────
+
+def eval_facedetect(cfg: dict) -> dict:
+    """FaceNet (DetectNet_v2, 1 класс 'face', вход 736×416) на WIDER FACE.
+
+    Переиспользует detectnet_v2_decode (как TrafficCamNet/LPDNet). Читает
+    data/widerface/labels.json в том же формате, что TrafficCamNet:
+    [{image_id, file_name, detections:[{category:'face', box2d:{x1,y1,x2,y2}}]}].
+    """
+    model_path = ROOT / cfg["model_path"]
+    data_dir = ROOT / cfg["data_dir"]
+    results_dir = ROOT / cfg["results_dir"]
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    if not model_path.exists():
+        log.error(f"FaceNet model not found: {model_path}")
+        return {"error": "model not found"}
+
+    meta_path = data_dir / "labels.json"
+    if not meta_path.exists():
+        log.error(f"WIDER FACE labels not found: {meta_path}")
+        return {"error": "dataset not found"}
+
+    with open(meta_path) as f:
+        all_meta = json.load(f)
+
+    sess = get_ort_session(str(model_path))
+    input_name = sess.get_inputs()[0].name
+    # FaceNet input: 736×416 (W×H). Подтвердить из sess.get_inputs()[0].shape;
+    # если модель статической формы — взять оттуда.
+    ishape = sess.get_inputs()[0].shape
+    H = ishape[2] if isinstance(ishape[2], int) else 416
+    W = ishape[3] if isinstance(ishape[3], int) else 736
+    conf_thr = float(cfg.get("conf_thr", 0.4))
+    bbox_norm = float(cfg.get("bbox_norm", 35.0))
+
+    images_dir = data_dir / "images"
+    predictions, ground_truths = [], []
+
+    for item in tqdm(all_meta, desc="FaceDetect", unit="img"):
+        img_path = images_dir / item["file_name"]
+        if not img_path.exists():
+            continue
+        img = cv2.imread(str(img_path))
+        if img is None:
+            continue
+        orig_h, orig_w = img.shape[:2]
+        inp = cv2.resize(img, (W, H)).astype(np.float32)
+        inp = inp[:, :, ::-1].transpose(2, 0, 1)[None] / 255.0  # BGR→RGB NCHW
+
+        outputs = sess.run(None, {input_name: inp})
+        cov = outputs[0][0]   # [C, gh, gw]
+        bbox = outputs[1][0]  # [4C, gh, gw]
+        boxes_pred = detectnet_v2_decode(
+            cov, bbox, target_cls=0, conf_thr=conf_thr,
+            stride=16, bbox_norm=bbox_norm, img_w=W, img_h=H,
+            scale_w=orig_w / W, scale_h=orig_h / H,
+        )
+        predictions.append({"image_id": item["image_id"], "boxes": boxes_pred})
+
+        gt_boxes = []
+        for det in item.get("detections", []):
+            b = det.get("box2d", det.get("bbox2d", {}))
+            if b:
+                gt_boxes.append([b["x1"], b["y1"], b["x2"], b["y2"]])
+        ground_truths.append({"image_id": item["image_id"], "boxes": gt_boxes})
+
+    m = compute_detection_metrics(predictions, ground_truths, conf_threshold=conf_thr)
+    thresholds = {"precision": 0.70, "recall": 0.70, "f1": 0.70}
+    status = check_thresholds(m.to_dict(), thresholds)
+
+    result = {"metrics": m.to_dict(), "thresholds": status,
+              "conf_thr": conf_thr,
+              "note": "TAO FaceNet (DetectNet_v2) на WIDER FACE val; "
+                      "WIDER FACE содержит крошечные/перекрытые лица (hard set) — "
+                      "FAIL возможен и валиден"}
+    (results_dir / "metrics.json").write_text(json.dumps(result, indent=2))
+    log.info(f"FaceDetect: P={m.precision:.3f} R={m.recall:.3f} F1={m.f1:.3f}")
+    return result
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 EVAL_CONFIGS = {
@@ -983,6 +1064,14 @@ EVAL_CONFIGS = {
         "data_dir": "data/stanford_cars",
         "results_dir": "results/vehicletypenet",
         "eval_fn": eval_vehicletypenet,
+    },
+    "facedetect": {
+        "model_path": "models/facenet/facenet.onnx",
+        "data_dir": "data/widerface",
+        "results_dir": "results/facedetect",
+        "eval_fn": eval_facedetect,
+        "conf_thr": 0.4,
+        "bbox_norm": 35.0,
     },
     "lpdnet": {
         "model_path": "models/lpdnet/LPDNet_usa_pruned_tao5.onnx",

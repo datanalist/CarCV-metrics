@@ -36,6 +36,7 @@ VALID_EXPERIMENTS = {
     "trafficcamnet",
     "vehiclemakenet",
     "vehicletypenet",
+    "facedetect",
     "lpdnet",
     "lprnet",
     "nomeroff_lpd",
