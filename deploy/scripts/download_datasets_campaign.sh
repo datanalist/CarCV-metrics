@@ -32,7 +32,7 @@ if [ "$WHICH" = "bdd100k" ] || [ "$WHICH" = "all" ]; then
     echo "  распаковка…"
     unzip -q -o data/bdd100k_raw/bdd100k.zip -d data/bdd100k_raw
     python - <<'EOF'
-import json, shutil, sys
+import json, sys
 from pathlib import Path
 sys.path.insert(0, "evaluation")
 from dataset_prep import bdd100k_to_labels
