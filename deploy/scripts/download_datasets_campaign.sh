@@ -64,7 +64,7 @@ for it in items:
 
 Path("data/bdd100k/labels.json").write_text(json.dumps(present))
 print(f"BDD100K val: {len(present)} изображений с аннотациями, "
-      f"{sum(len(i['detections']) for i in present)} детекций (slинковано {linked})")
+      f"{sum(len(i['detections']) for i in present)} детекций (слинковано {linked})")
 EOF
   fi
   echo "  готово: $(du -sh data/bdd100k 2>/dev/null | cut -f1)"
