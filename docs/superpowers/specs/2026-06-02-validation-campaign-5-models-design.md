@@ -8,6 +8,13 @@
 датасетах и в задачи кампании **не входят** (см. ниже); реальная работа — три модели.
 Ветки — одна общая (не worktree-на-модель). Источник BDD100K и VMMRdb — прямой wget
 с публичной Nextcloud-шары.
+Поправка 2026-06-02 (переход remote→local): прогоны переезжают с арендованного
+эфемерного SSH-контейнера qudata.ai на **собственную локальную машину с RTX 3090**.
+Репозиторий клонируется на эту машину, `evaluate.py` запускается на месте; окружение и
+датасеты/веса ставятся **один раз** и переиспользуются. Remote-оркестрация
+(`run_remote.py`, `remote_experiments.yaml`) сохраняется в репо как **опциональный** путь
+для возврата к арендованным GPU, но перестаёт быть основной. Локальный путь оформляется
+пошаговой документацией (без новых скриптов).
 
 ## Цель
 
@@ -127,33 +134,43 @@ VehicleTypeNet (Stanford Cars) и nomeroff LPD/OCR — код не трогае�
 
 Изоляция результатов: у каждой модели свой `results/<model>/metrics.json` + графики.
 
-## Серверная конфигурация
+## Окружение исполнения
 
-Один хост, эфемерный контейнер с одним GPU (на момент дизайна — `ssh2.qudata.ai:17108`,
-RTX 3090 24 GB, ключ `~/.ssh/qudata`, user root). Особенности:
+Основной путь — **собственная локальная машина с RTX 3090 24 GB** с постоянным
+окружением (в отличие от прежнего эфемерного контейнера). Репозиторий клонируется на эту
+машину, прогоны идут на месте. Один GPU → прогоны последовательны; изоляция
+кода/конфигов/результатов — на уровне функций эвалуаторов и каталогов `results/<model>/`,
+без отдельных worktree.
 
-- Контейнер пересоздаётся между запусками: host/port и host key меняются,
-  `~/datasets`, `~/models` каждый раз пустые, onnxruntime и uv отсутствуют
-  (torch 2.8 + CUDA — есть).
-- Host/port/identity вынесены в `configs/remote_experiments.yaml` — единственное место правки.
-- Перед коннектом — очистка stale host key: `ssh-keygen -R '[host]:<old_port>'`,
-  подключение с `StrictHostKeyChecking=accept-new`.
+Setup — **разовый** (не идемпотентный-каждый-прогон, как было на эфемерном контейнере),
+состояние сохраняется между прогонами:
 
-Следствие для пайплайна: bootstrap (`pip install onnxruntime-gpu` + `deploy/requirements.txt`,
-без torch) и скачивание датасетов/весов — **идемпотентные скрипты, запускаемые в начале
-каждого прогона** из bundle. Расчёта на сохранённое состояние между прогонами нет.
-Один GPU → прогоны последовательны; изоляция кода/конфигов/результатов — на уровне
-функций эвалуаторов и каталогов `results/<model>/`, без отдельных worktree.
+- `venv` через `uv`; установка `onnxruntime-gpu` + `deploy/requirements.txt` (torch —
+  отдельно/в системе, в requirements не тянется).
+- Веса TAO (TrafficCamNet, VehicleMakeNet, FaceNet) — `download_models.sh` с NGC, один раз.
+- Датасеты: BDD100K и VMMRdb — прямой `wget` с публичной Nextcloud-шары
+  (download-API: `…/s/<token>/download?path=/DATASETS&files=<file>.zip`); WIDER FACE — с
+  HuggingFace. Скачиваются **один раз** в постоянный `~/datasets`, дальше переиспользуются.
 
-## Поток данных (на каждый прогон)
+Локальный путь оформляется пошаговой документацией (в этом spec и README), без новых
+скриптов-оркестраторов.
 
-1. `run_remote.py deploy` синхронизирует код+конфиг на сервер и поднимает окружение (setup).
-2. На сервере: bootstrap deps (onnxruntime-gpu + `requirements.txt`, без torch) →
-   скачивание датасета и весов. BDD100K и VMMRdb тянутся прямым `wget` с публичной
-   Nextcloud-шары (download-API: `…/s/<token>/download?path=/DATASETS&files=<file>.zip`);
-   веса TAO — с NGC.
-3. `run_remote.py run` запускает `evaluate.py` (препроцессинг + инференс + метрики).
-4. `metrics.json` + графики → `run_remote.py collect` → `results_collected/<host>/<model>/`.
+**Опционально: арендованные GPU (remote).** Прежний SSH-путь сохранён в репо на случай
+возврата к арендованным GPU: `run_remote.py` (deploy/run/collect) + `configs/remote_experiments.yaml`
+(host/port/identity). Особенности эфемерного контейнера qudata.ai (ротация host/port и host
+key, пустые `~/datasets`/`~/models` и отсутствие onnxruntime/uv при каждом запуске → bootstrap
+как идемпотентный скрипт в начале прогона; очистка stale host key `ssh-keygen -R '[host]:<port>'`,
+`StrictHostKeyChecking=accept-new`) актуальны только для этого опционального пути.
+
+## Поток данных (локально, основной путь)
+
+1. `git clone`/`git pull` репозитория на машину с RTX 3090.
+2. Разовый setup: `venv`/`uv` → `onnxruntime-gpu` + `requirements.txt` → `download_models.sh`
+   (веса TAO) → `wget`/HF-загрузка датасетов в постоянный `~/datasets`. Повторно не нужен.
+3. Прогон модели напрямую: `python deploy/evaluation/evaluate.py --model <…>`
+   (препроцессинг + инференс + метрики).
+4. `metrics.json` + графики пишутся прямо в `results/<model>/` — без шагов collect и без
+   каталога `results_collected/<host>/` (они относятся только к опциональному remote-пути).
 
 ## Веса моделей
 
@@ -174,16 +191,18 @@ RTX 3090 24 GB, ключ `~/.ssh/qudata`, user root). Особенности:
 ## Порядок выполнения
 
 1. TrafficCamNet — загрузчик BDD100K + class-mapping, прогон (проверяет пайплайн
-   end-to-end на новом сервере на «лёгком» по коду шаге — эвалуатор уже есть).
+   end-to-end на локальной машине с RTX 3090 на «лёгком» по коду шаге — эвалуатор уже есть).
 2. VehicleMakeNet — загрузчик VMMRdb + make-mapping, прогон.
 3. FaceDetect — новый эвалуатор + WIDER FACE (самый рискованный, в конце).
 
 ## Финальная агрегация
 
 После трёх прогонов — слить feature-ветку в `main`, запустить `aggregate_summary.py`:
-единый `results/SUMMARY.md` агрегирует все шесть пар (три новых + три уже собранных из
-`results_collected/`), графики в `plots/`, JSON+CSV в `results/`, воспроизводимый
-notebook в `notebooks/`.
+единый `results/SUMMARY.md` агрегирует все шесть пар. Три новых модели лежат локально в
+`results/<model>/` (прогоны на RTX 3090); три уже отвалидированных (nomeroff_lpd/ocr,
+VehicleTypeNet) — в `results_collected/` от прошлых прогонов, читаются как есть.
+`aggregate_summary.py` сливает оба источника. Графики в `plots/`, JSON+CSV в `results/`,
+воспроизводимый notebook в `notebooks/`.
 
 ## Вне охвата (YAGNI)
 
