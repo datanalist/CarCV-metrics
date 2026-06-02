@@ -1041,9 +1041,9 @@ EVAL_CONFIGS = {
         "data_dir": "data/bdd100k",
         "results_dir": "results/trafficcamnet",
         "eval_fn": eval_trafficcamnet,
-        # Goal 4: multi-class evaluation + lower conf_thr под cross-domain (COCO street-level).
-        # Когда BDD100K val 10K окажется доступен на ssh9 — можно поднять до 0.4 (in-domain).
-        "conf_thr": 0.2,
+        # BDD100K — in-domain (traffic-cam), ближе к training-условиям → 0.4
+        # (было 0.2 под cross-domain COCO street-level суррогат).
+        "conf_thr": 0.4,
         "eval_classes": ["car", "person", "bicycle", "road_sign"],
     },
     "vehiclemakenet": {

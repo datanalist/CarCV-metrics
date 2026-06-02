@@ -14,21 +14,14 @@
 # remote.results_local     — local directory where results are collected (per-host subdirs)
 
 servers:
-  # ssh1.qudata.ai больше недоступен — все эксперименты Goal 4 перенесены на ssh9
-  # (миграция 2026-05-17 после фикса normalize_brand и §6.5 dataset migration).
-  - host: ssh9.qudata.ai
-    port: 19478
+  # Кампания 2026-06: контейнер ротируется между прогонами (host/port/key меняются).
+  # Прогоны последовательны — в experiments держим только текущую модель.
+  - host: ssh2.qudata.ai
+    port: 17108
     user: root
     identity_file: ~/.ssh/qudata
     experiments:
-      # Goal 4 migration: §6.5 datasets + class-mapping fixes
-      - trafficcamnet      # BDD100K val 10K (native labels, было COCO val2017)
-      - vehiclemakenet     # mad-cars sample 5K (фикс normalize_brand collapse)
-      - vehicletypenet     # Stanford Cars + Make→Type mapping (было BIT-Vehicle/Kaggle)
-      # RU LP swap (Goal 5)
-      - nomeroff_lpd
-      - nomeroff_ocr
-      # Legacy baseline (US-trained LPDNet/LPRNet) сохранён в results_collected/ssh9.qudata.ai/results/{lpdnet,lprnet}/.
+      - trafficcamnet      # BDD100K val 10K (native labels), conf_thr 0.4 in-domain
 
 remote:
   deploy_dir: ~/cars-eval
