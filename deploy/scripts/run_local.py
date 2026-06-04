@@ -23,6 +23,19 @@ OVERLAY_KEYS = ("model_path", "labels_path", "data_dir", "results_dir",
                 "conf_thr", "eval_classes")
 
 
+def preload_cuda() -> None:
+    """Подгрузить CUDA/cuDNN из nvidia-*-cu12 pip-пакетов venv до создания ORT-сессий.
+
+    Без этого onnxruntime не находит libcublasLt.so.12 и тихо откатывается на
+    CPUExecutionProvider. На машинах без GPU/пакетов — мягкое предупреждение, не фатально.
+    """
+    try:
+        import onnxruntime as ort
+        ort.preload_dlls()
+    except Exception as e:  # noqa: BLE001
+        print(f"[warn] onnxruntime.preload_dlls() не сработал ({e}); возможен CPU-фолбэк")
+
+
 def load_paths(path: Path) -> dict:
     """configs/local_paths.yaml → dict (пусто, если файла нет)."""
     if not path.exists():
@@ -52,6 +65,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--paths", type=Path, default=DEFAULT_PATHS)
     args = p.parse_args(argv)
 
+    preload_cuda()   # активировать CUDAExecutionProvider до первой ORT-сессии
     paths = load_paths(args.paths)
     for name in select_models(args.models, EVAL_CONFIGS):
         cfg = overlay_config(EVAL_CONFIGS[name], paths.get(name, {}))
