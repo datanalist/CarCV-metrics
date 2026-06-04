@@ -318,6 +318,22 @@ def normalize_brand(brand: str) -> str:
     return b
 
 
+def discover_vmmrdb_samples(data_dir: Path, ngc_makes_lower) -> list:
+    """VMMRdb: каталоги <make>_<model>_<year>. brand = первый токен (normalize_brand).
+    OOD (марка не в 20 NGC) пропускается. Возвращает [(img_path, brand)]."""
+    samples = []
+    for cls_dir in sorted(data_dir.iterdir()):
+        if not cls_dir.is_dir():
+            continue
+        brand = normalize_brand(cls_dir.name.split("_")[0])
+        if brand not in ngc_makes_lower:
+            continue
+        for img in sorted(cls_dir.iterdir()):
+            if img.suffix.lower() in (".jpg", ".jpeg", ".png"):
+                samples.append((img, brand))
+    return samples
+
+
 def eval_vehiclemakenet(cfg: dict) -> dict:
     model_path = ROOT / cfg["model_path"]
     labels_path = ROOT / cfg["labels_path"]
@@ -331,50 +347,55 @@ def eval_vehiclemakenet(cfg: dict) -> dict:
 
     labels = load_labels(labels_path)
     labels_norm = [l.strip().lower() for l in labels]
-
-    meta_path = data_dir / "sample_5k.json"
-    if not meta_path.exists():
-        log.error(f"mad-cars metadata not found: {meta_path}")
-        return {"error": "dataset not found"}
-
-    with open(meta_path) as f:
-        sample = json.load(f)
-
     sess = get_ort_session(str(model_path))
     input_name = sess.get_inputs()[0].name
-    images_dir = data_dir / "images"
+
+    # Источник данных: MAD-Cars (sample_5k.json) ИЛИ VMMRdb (каталоги-по-классам)
+    madcars_meta = data_dir / "sample_5k.json"
+    samples: list[tuple[Path, str]] = []
+    if madcars_meta.exists():
+        source = "mad_cars"
+        with open(madcars_meta) as f:
+            sample = json.load(f)
+        images_dir = data_dir / "images"
+        for item in sample:
+            samples.append((images_dir / item["file_name"],
+                            normalize_brand(item["brand"])))
+    elif data_dir.exists() and any(p.is_dir() for p in data_dir.iterdir()):
+        source = "vmmrdb"
+        samples = discover_vmmrdb_samples(data_dir, NGC_MAKES_LOWER)
+    else:
+        log.error(f"VehicleMakeNet: no sample_5k.json and no class dirs in {data_dir}")
+        return {"error": "dataset not found"}
+
+    if not samples:
+        return {"error": "no images"}
 
     predictions, ground_truths = [], []
     skipped_oo_dist = 0
-    for item in tqdm(sample, desc="VehicleMakeNet", unit="img"):
-        img_path = images_dir / item["file_name"]
-        if not img_path.exists():
-            continue
-        gt_label = normalize_brand(item["brand"])
-        # Skip out-of-distribution samples (brand not in NGC's 20 makes)
+    for img_path, gt_label in tqdm(samples, desc="VehicleMakeNet", unit="img"):
         if gt_label not in NGC_MAKES_LOWER:
             skipped_oo_dist += 1
             continue
         img = cv2.imread(str(img_path))
         if img is None:
             continue
-
-        # VehicleMakeNet: BGR + offsets=(104, 117, 124)
         inp = preprocess_tao_bgr(img, size=224, offsets=(104.0, 117.0, 124.0))
         out = sess.run(None, {input_name: inp})[0][0]
         probs = softmax(out)
-        top_k = [labels[i] for i in probs.argsort()[::-1][:3]]
+        top_k = [labels_norm[i] for i in probs.argsort()[::-1][:3]]
+        predictions.append({"image_id": str(img_path), "top_k": top_k})
+        ground_truths.append({"image_id": str(img_path), "label": gt_label})
 
-        predictions.append({"image_id": item["file_name"], "top_k": [t.lower() for t in top_k]})
-        ground_truths.append({"image_id": item["file_name"], "label": gt_label})
-
-    log.info(f"VehicleMakeNet: skipped {skipped_oo_dist} out-of-distribution samples (not in 20 NGC makes)")
+    log.info(f"VehicleMakeNet[{source}]: {len(predictions)} imgs, "
+             f"skipped {skipped_oo_dist} out-of-distribution (not in 20 NGC makes)")
 
     m = compute_classification_metrics(predictions, ground_truths)
     thresholds = {"top1_accuracy": 0.70, "top3_accuracy": 0.85}
     status = check_thresholds(m.to_dict(), thresholds)
 
-    result = {"metrics": m.to_dict(), "thresholds": status}
+    result = {"metrics": m.to_dict(), "thresholds": status,
+              "source": source, "skipped_ood": skipped_oo_dist}
     (results_dir / "metrics.json").write_text(json.dumps(result, indent=2))
 
     import csv
