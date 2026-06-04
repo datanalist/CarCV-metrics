@@ -1,0 +1,1 @@
+{"status": "deferred", "reason": "nomeroff-net import fails: No module named 'modelhub_client' (modelhub-client not on PyPI)", "thresholds_spec": {"char_accuracy": 0.90, "plate_accuracy": 0.80}, "prior_remote_qudata": {"char_accuracy": 0.9995, "plate_accuracy": 0.9978, "note": "PASS на удалённом прогоне, локально НЕ воспроизведено"}}
