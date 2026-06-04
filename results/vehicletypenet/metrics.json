@@ -1,0 +1,21 @@
+{
+  "metrics": {
+    "top1_accuracy": 0.3549,
+    "top3_accuracy": 0.6932,
+    "num_samples": 7577,
+    "per_class_accuracy": {
+      "coupe": 0.3282,
+      "sedan": 0.2867,
+      "truck": 0.6137,
+      "suv": 0.3807,
+      "van": 0.3757
+    }
+  },
+  "thresholds": {
+    "top1_accuracy": {
+      "value": 0.3549,
+      "threshold": 0.85,
+      "status": "FAIL"
+    }
+  }
+}
