@@ -1,0 +1,34 @@
+# configs/local_paths.yaml
+# Абсолютные локальные пути к датасетам и весам (RTX 3090, сверено 2026-06-04).
+# Накладывается поверх EVAL_CONFIGS в deploy/scripts/run_local.py (OVERLAY_KEYS).
+# Веса/данные в git НЕ коммитятся. Пути с пробелами — в кавычках.
+
+trafficcamnet:
+  model_path: /home/mk/CarCV/models/trafficcamnet_pruned_onnx_v1.0.4/resnet18_trafficcamnet_pruned.onnx
+  labels_path: /home/mk/CarCV/models/trafficcamnet_pruned_onnx_v1.0.4/labels.txt
+  data_dir: /home/mk/CarCV-metrics/data/prep/trafficcamnet
+
+vehicletypenet:
+  model_path: /home/mk/CarCV/models/vehicletypenet_pruned_onnx_v1.1.0/resnet18_pruned.onnx
+  labels_path: /home/mk/CarCV/models/vehicletypenet_pruned_onnx_v1.1.0/labels.txt
+  data_dir: /home/mk/CarCV-metrics/data/prep/vehicletypenet
+
+vehiclemakenet:
+  model_path: /home/mk/CarCV/models/vehiclemakenet_pruned_onnx_v1.1.0/resnet18_pruned.onnx
+  labels_path: /home/mk/CarCV/models/vehiclemakenet_pruned_onnx_v1.1.0/labels.txt
+  data_dir: "/home/mk/Загрузки/DATASETS/VMMRdb"
+
+color:
+  model_path: /home/mk/CarCV/models/bae_model_f3.onnx
+  data_dir: /home/mk/CarCV/data/external/ymad_cars
+
+facedetect:
+  model_path: /home/mk/CarCV-metrics/data/prep/facedetect/facenet.onnx
+  data_dir: "/home/mk/Загрузки/DATASETS/Wider Face/WIDER_val"
+
+nomeroff_lpd:
+  model_path: /home/mk/CarCV/models/nomeroff_net/object_detection/yolov26x-keypoints-2026-01-21.pt
+  data_dir: "/home/mk/Загрузки/DATASETS/nomeroff/autoriaNumberplateDataset-2021-05-12"
+
+nomeroff_ocr:
+  data_dir: "/home/mk/Загрузки/DATASETS/nomeroff/autoriaNumberplateOcrRu-2021-09-01"
