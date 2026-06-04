@@ -50,3 +50,9 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Локальная кампания: зашифрованные веса, prep-данные, deploy-симлинки
+*.etlt
+/data/prep/
+/deploy/results
+/deploy/plots
