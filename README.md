@@ -1,506 +1,225 @@
-# CarCV - Computer Automotive Recognition System
+# CarCV-metrics — валидация ML-стека системы CarCV
 
-> Интеллектуальная бортовая система компьютерного зрения для распознавания и анализа транспортных средств на платформе NVIDIA Jetson
+> Репозиторий **оценки и валидации** моделей бортовой системы видеоаналитики **CarCV** (распознавание транспортных средств в реальном времени на NVIDIA Jetson Orin Nano 8GB).
 
-[![Status](https://img.shields.io/badge/Status-In%20Development-yellow)](https://github.com)
-[![Platform](https://img.shields.io/badge/Platform-NVIDIA%20Jetson%20Orin%20Nano-green)](https://developer.nvidia.com/embedded/jetson-orin)
-[![License](https://img.shields.io/badge/License-Proprietary-red)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Validation%20Campaign-yellow)](#-результаты-валидации)
+[![Platform](https://img.shields.io/badge/Target-NVIDIA%20Jetson%20Orin%20Nano-green)](https://developer.nvidia.com/embedded/jetson-orin)
+[![Metrics](https://img.shields.io/badge/Metrics-measured%20%7C%20honest-blue)](#-результаты-валидации)
 
 ---
 
 ## 📋 Содержание
 
-- [Обзор](#-обзор)
-- [Архитектура](#-архитектура)
-- [Модели ML](#-модели-ml)
-- [Технические характеристики](#-технические-характеристики)
-- [Текущее состояние](#-текущее-состояние)
-- [Установка и запуск](#-установка-и-запуск)
+- [Что это за репозиторий](#-что-это-за-репозиторий)
+- [Конвейер CarCV](#-конвейер-carcv)
+- [Стек моделей](#-стек-моделей)
+- [Результаты валидации](#-результаты-валидации)
+- [Датасеты](#-датасеты)
+- [Лицензии и ограничения](#-лицензии-и-ограничения)
+- [Целевая платформа](#-целевая-платформа)
+- [Как запустить валидацию](#-как-запустить-валидацию)
 - [Документация](#-документация)
-- [Roadmap](#-roadmap)
+- [Статус кампании и дальнейшие шаги](#-статус-кампании-и-дальнейшие-шаги)
 
 ---
 
-## 🎯 Обзор
+## 🎯 Что это за репозиторий
 
-**CarCV** — это автономная система видеоаналитики реального времени, разработанная для установки на борту автомобиля. Система выполняет комплексный анализ транспортных средств:
+**CarCV** — автономная бортовая система видеоаналитики реального времени: детекция ТС, распознавание номеров (LP Detection + OCR), классификация марки/типа/цвета, детекция лиц, трекинг.
 
-- ✅ **Детекция** автомобилей в видеопотоке (30+ FPS)
-- ✅ **Распознавание** номерных знаков (OCR с точностью 98.75%)
-- ✅ **Классификация** марки, типа кузова и цвета
-- ✅ **Трекинг** объектов с присвоением уникальных ID
-- ✅ **Детекция лиц** водителей и пассажиров
-- ✅ **REST API** для интеграции с внешними системами
+**CarCV-metrics** (этот репозиторий) — **не сам продукт, а его измерительный контур**: воспроизводимая валидация моделей продакшн-стека против открытых датасетов. Цель — получить **честные измеренные метрики** по каждой паре «модель × датасет» с однозначным вердиктом **PASS / FAIL**.
 
-### 🎭 Применение
+Принципы кампании:
 
-- 🚔 **Правоохранительные органы** — мониторинг розыскных автомобилей
-- 🏢 **Контроль доступа** — автоматическая идентификация на КПП
-- 🅿️ **Парковочные системы** — учёт въезда/выезда транспорта
-- 📊 **Аналитика трафика** — статистика по типам и маркам ТС
-- 🚛 **Логистика** — отслеживание грузового транспорта
+- **Источник истины по моделям** — [`models.md`](models.md); по датасетам — [`datasets.md`](datasets.md). Детальные спецификации — в [`docs/about_models/`](docs/about_models) и [`docs/about_datasets/`](docs/about_datasets).
+- **Измеренные метрики** хранятся в `results_collected/ssh9.qudata.ai/results/<model>/metrics.json`; пороги pass/fail — в `deploy/evaluation/evaluate.py` (`EVAL_CONFIGS`).
+- **FAIL — валидный окончательный результат.** Модель не тюнингуется ради «зелёного» вердикта; провал из-за доменного разрыва фиксируется как факт о применимости.
+- **Метрики измерены на x86 GPU через ONNX Runtime** и считаются **верхней границей** точности для TensorRT-движка на Jetson.
+
+> ⚠️ **Legacy-предупреждение.** Прежняя версия этого README и документы `docs/architecture.md` / `docs/system-design/` описывали **старый US-ориентированный стек** (LPDNet, LPR_STN_PRE_POST, US LPRNet) и **аспирационные/непроверенные** числа (TrafficCamNet «P=0.92–0.95», OCR «99.44%», Color «0.84», latency/FPS). Эти значения **не измерялись** в данном репозитории и здесь не воспроизводятся. Актуальный стек — RU/UA-ориентированный (см. ниже).
 
 ---
 
-## 🏗️ Архитектура
-
-### Общая схема системы
+## 🏗️ Конвейер CarCV
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        CarCV System                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Video Input (1080p/30fps)                                  │
-│       │                                                      │
-│       ├─► DeepStream Pipeline (NVIDIA GPU)                  │
-│       │   ├─ PGIE: TrafficCamNet (Vehicle Detection)        │
-│       │   ├─ SGIE1: VehicleMakeNet (Brand)                  │
-│       │   ├─ SGIE2: VehicleTypeNet (Body Type)              │
-│       │   ├─ SGIE3: LPDNet (License Plate Detection)        │
-│       │   └─ SGIE4: FaceDetect (Face Detection)             │
-│       │                                                      │
-│       └─► Python Service (ONNX Runtime)                     │
-│           ├─ LPR_STN_PRE_POST (OCR Recognition) ⭐          │
-│           └─ bae_model_f3 (Color Recognition)               │
-│                                                              │
-│  Output: SQLite DB + REST API + Web UI                      │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+Video (1080p) ─► PGIE: TrafficCamNet (детекция ТС, DeepStream/TensorRT)
+                   │
+                   ├─► SGIE1: VehicleMakeNet  (марка, 20 классов)
+                   ├─► SGIE2: VehicleTypeNet  (тип кузова, 6 классов)
+                   └─► SGIE4: FaceDetect      (лица водителя/пассажиров)
+
+                 Python-сервисы (PyTorch / ONNX Runtime):
+                   ├─► nomeroff_lpd  (LP Detection, YOLOv11x + 4 keypoints)  ──► выравнивание
+                   ├─► nomeroff_ocr  (OCR RU-номера, CRNN + CTC)
+                   └─► bae_model_f3  (цвет кузова, EfficientNet-B3)   [веса вне репозитория]
 ```
 
-### Компоненты
+**Ключевая смена стека.** RU/UA-сегмент потребовал замены US-обученных моделей NVIDIA TAO:
 
-| Компонент | Технология | Назначение |
-|-----------|-----------|------------|
-| **DeepStream SDK** | C/GStreamer | Видеопайплайн и inference на GPU |
-| **TensorRT** | FP16/INT8 | Ускорение нейросетей |
-| **ONNX Runtime** | GPU/CPU | Inference для OCR и цвета |
-| **SQLite** | Database | Хранение результатов детекций |
-| **REST API** | Python/HTTP | Интеграция с внешними системами |
-| **Web UI** | HTML/JS | Мониторинг в реальном времени |
+- **`nomeroff_lpd`** заменил **US LPDNet** — на RU/UA-пластинах US-детектор консервативен (recall ≈ 0.30 при том же датасете).
+- **`nomeroff_ocr`** заменил **US LPRNet** — US-OCR использует латинский алфавит `A–Z`/иной CTC-blank и проваливает RU-номера (char 0.59 / plate 0.06).
+
+`nomeroff_lpd` и `nomeroff_ocr` работают как Python-сервисы (а не узлы DeepStream SGIE), как и сервис цвета `bae_model_f3`.
 
 ---
 
-## 🤖 Модели ML
+## 🤖 Стек моделей
 
-Система использует **7 специализированных нейросетей**:
+Источник: [`models.md`](models.md). Полные спецификации — по ссылкам в столбце «Спека».
 
-### 1️⃣ TrafficCamNet (Primary Detector)
+| Задача | Модель | Источник / архитектура | Роль | Спека |
+|--------|--------|------------------------|------|-------|
+| Detection | **TrafficCamNet** | NVIDIA TAO · DetectNet_v2, ResNet-18 (pruned) | PGIE — первичный детектор | [📄](docs/about_models/trafficcamnet.md) |
+| LP Detection | **nomeroff_lpd** | Nomeroff Net · YOLOv11x + keypoints (4 угла) | Python-сервис (RU/UA) | [📄](docs/about_models/nomeroff_lpd.md) |
+| OCR | **nomeroff_ocr** | Nomeroff Net · CRNN ResNet-18 + CTC (RU) | Python-сервис | [📄](docs/about_models/nomeroff_ocr.md) |
+| Color | **bae_model_f3** | Кастомная · EfficientNet-B3 (15 цветов) | Python-сервис · *веса вне репо* | [📄](docs/about_models/bae_model_f3.md) |
+| Make | **VehicleMakeNet** | NVIDIA TAO · TAO-classifier, ResNet-18 (20 US/EU марок) | SGIE1 | [📄](docs/about_models/vehiclemakenet.md) |
+| Type | **VehicleTypeNet** | NVIDIA TAO · TAO-classifier, ResNet-18 (6 типов) | SGIE2 | [📄](docs/about_models/vehicletypenet.md) |
+| Face Detection | **FaceDetect** | NVIDIA TAO FaceNet · DetectNet_v2 (1 класс `face`) | SGIE4 | [📄](docs/about_models/facedetect.md) |
+| Face embedding | **— (None / Trainable)** | модель не выбрана и не существует | планируемая задача | [📄](docs/about_models/face_embedding.md) |
 
-```yaml
-Задача: Детекция транспортных средств
-Архитектура: ResNet-18 (pruned)
-Формат: TensorRT FP16
-Входной размер: 960×544×3 BGR
-Метрики:
-  - Precision: 0.92-0.95
-  - Recall: 0.88-0.92
-  - F1-Score: 0.91
-  - Inference: 8-10 ms
-Статус: ✅ Production
-Приоритет: 🔴 Critical
-```
-
-### 2️⃣ VehicleMakeNet (Brand Classifier)
-
-```yaml
-Задача: Классификация марки автомобиля
-Выходные классы: 20 брендов (Acura, Audi, BMW, ...)
-Метрики:
-  - Top-1 Accuracy: 0.76
-  - Top-3 Accuracy: 0.92
-  - Inference: 4-5 ms
-Статус: ✅ Production
-```
-
-### 3️⃣ VehicleTypeNet (Type Classifier)
-
-```yaml
-Задача: Классификация типа кузова
-Выходные классы: 6 типов (sedan, suv, truck, van, coupe, largevehicle)
-Метрики:
-  - Accuracy: 0.88
-  - Inference: 3-4 ms
-Статус: ✅ Production
-```
-
-### 4️⃣ LPDNet (License Plate Detector)
-
-```yaml
-Задача: Детекция номерных знаков на автомобиле
-Метрики:
-  - Recall: 0.85-0.90
-  - Inference: 2-3 ms
-Статус: ✅ Production
-Приоритет: 🟡 High
-```
-
-### 5️⃣ FaceDetect (Face Detector)
-
-```yaml
-Задача: Детекция лиц водителя и пассажиров
-Статус: ⚠️ Production (требуется оценка)
-Приоритет: 🟢 Low
-```
-
-### 6️⃣ LPR_STN_PRE_POST (OCR Engine) ⭐ ЛУЧШИЙ РЕЗУЛЬТАТ
-
-```yaml
-Задача: Распознавание текста российских номерных знаков
-Архитектура: STN + CNN + Bi-LSTM + CTC
-Формат: ONNX Runtime GPU/CPU
-Входной размер: 188×48×3 RGB
-Алфавит: 23 символа (0-9, A,B,E,K,M,H,O,P,C,T,Y,X,-)
-
-🏆 Baseline Metrics (проверено на 4893 образцах):
-  - Character Accuracy: 99.44% ✅ (цель: >90%)
-  - Full Plate Accuracy: 98.75% ✅ (цель: >80%)
-  - Character Error Rate: 0.17%
-  - Ошибок: 61 из 4893 (1.25%)
-  - Inference Time: 5.04 ms (CPU)
-
-Статус: ✅ Production - ПРЕВЫШАЕТ ТРЕБОВАНИЯ
-Приоритет: 🔴 Critical
-Последнее тестирование: 14.01.2026
-Dataset: autoriaNumberplateOcrRu-2021-09-01/val
-```
-
-**Архитектура LPR_STN:**
-
-```
-Input (188×48×3) → STN (выравнивание) → CNN (features) → 
-Bi-LSTM (sequence) → CTC Decoder → "A123BC77"
-```
-
-### 7️⃣ bae_model_f3 (Color Recognition)
-
-```yaml
-Задача: Распознавание цвета автомобиля
-Архитектура: ResNet-based CNN
-Формат: ONNX Runtime GPU
-Входной размер: 384×384×3 RGB
-Выходные классы: 15 цветов (black, white, red, blue, silver, ...)
-Метрики:
-  - Overall Accuracy: 0.84
-  - Best Classes (>90%): black, white, red, blue
-  - Challenging (<80%): beige, tan, gold, silver
-  - Inference: 15 ms
-Статус: ✅ Production
-```
+> **Семейства препроцессинга различаются** и легко путаются (источник «тихой» деградации точности):
+> - **DetectNet_v2** (TrafficCamNet, FaceDetect): BGR→RGB, `/255`, без offsets, NCHW.
+> - **TAO classifier** (VehicleMakeNet, VehicleTypeNet): **BGR без свопа**, **без `/255`**, offsets `(104,117,124)` по каналам B;G;R, NCHW.
+> - **Generic ImageNet** (bae_model_f3): BGR→RGB, `/255`, `(x−mean)/std`, NCHW.
+> - **YOLO11 / CRNN** (nomeroff_lpd, nomeroff_ocr): препроцессинг инкапсулирован внутри пайплайна Nomeroff Net.
 
 ---
 
-## ⚙️ Технические характеристики
+## 📊 Результаты валидации
 
-### Аппаратная платформа
+Каждая модель сопоставлена с целевым датасетом из [`datasets.md`](datasets.md). Метрики — измеренные (`metrics.json`); пороги — из `eval_*` в `deploy/evaluation/evaluate.py`.
 
-```
-NVIDIA Jetson Orin Nano 8GB
-├─ GPU: 1024 CUDA cores (Ampere)
-├─ CPU: 6-core ARM Cortex-A78AE @ 2.0 GHz
-├─ RAM: 8GB LPDDR5 (unified memory)
-├─ AI Performance: 40 TOPS (INT8)
-└─ Power: 7W / 15W / 25W modes
-```
+| Модель | Задача | Датасет | Метрика (измерено) | Порог | Вердикт |
+|--------|--------|---------|---------------------|-------|---------|
+| **nomeroff_lpd** | LP Detection | AUTO.RIA Detection 2021-05-12 | P=0.9056 · R=0.9221 · F1=0.9138 | P≥0.70, R≥0.80 | ✅ **PASS** |
+| **nomeroff_ocr** | OCR | autoriaNumberplateOcrRu 2021-09-01 / val (4893) | char=0.9995 · plate=0.9978 | char≥0.90, plate≥0.80 | ✅ **PASS** |
+| **VehicleTypeNet** | Type | Stanford Cars (7483) | Top-1=0.3575 · Top-3=0.7009 | Top-1≥0.85 | ❌ **FAIL** (окончательно) |
+| **TrafficCamNet** | Detection | BDD100K | прогон TBD · *суррогат COCO: car P=0.082* | P≥0.90 R≥0.85 F1≥0.87 | ⏳ pending (суррогат FAIL) |
+| **VehicleMakeNet** | Make | VMMRdb | прогон TBD · *суррогат mad-cars: Top-1=0.083* | Top-1≥0.70 Top-3≥0.85 | ⏳ pending (суррогат FAIL) |
+| **FaceDetect** | Face Detection | WIDER FACE val (3226) | эвалуатор не реализован | AP Easy/Med/Hard · TBD | ⏳ не измерено |
+| **bae_model_f3** | Color | MAD-Cars | весов нет в репо/на NGC | — | 🚫 заблокировано |
+| **Face embedding** | — | (привязка WIDER FACE некорректна) | модели не существует | — | 🚫 вне охвата |
 
-### Производительность
+### Что важно понимать о вердиктах
 
-| Метрика | Целевое значение | Текущее состояние |
-|---------|------------------|-------------------|
-| **FPS** (1080p input) | ≥30 | ✅ 30+ |
-| **End-to-end latency** | <50 ms | ✅ ~40-50 ms |
-| **GPU utilization** | 70-85% | ✅ Оптимально |
-| **RAM usage** | <6 GB | ✅ В норме |
-| **Power consumption** | <25W | ✅ 18-25W |
-| **Uptime** | 99% (72h) | 🔄 Тестируется |
+- ✅ **PASS только у RU-моделей** (`nomeroff_lpd`, `nomeroff_ocr`) — они и были введены под RU/UA-домен. На тех же данных US-модели проваливаются: **US LPDNet** R=0.296, **US LPRNet** char=0.59 / plate=0.06.
+- ❌ **VehicleTypeNet — FAIL окончательно.** Stanford Cars размечен по make/model, тип кузова выведен по ключевым словам (суррогатный mapping) → доменный разрыв + шумные метки. Тюнинг не предполагается.
+- ⏳ **TrafficCamNet и VehicleMakeNet** прогонялись пока только на **суррогатах** (COCO street-level / mad-cars) и там провалились из-за доменного разрыва (US-обучение vs RU-данные / иной ракурс). Корректный прогон на BDD100K и VMMRdb — задачи кампании.
+- ⏳ **FaceDetect** — эвалуатор нужно реализовать с нуля (`.etlt` зашифрован, ONNX локально нет); самая рискованная задача, идёт последней.
+- 🚫 **Color (bae_model_f3)** — оценить нельзя: весов нет ни в репозитории, ни на NGC (лежат вне версионируемого дерева). Заявленная «0.84» — legacy, непроверена.
+- 🚫 **Face embedding** — задача-задел: модель `None (Trainable)`, измерять нечего.
 
-### Программный стек
-
-```yaml
-OS: Ubuntu 22.04 ARM64 (JetPack 6.2)
-CUDA: 12.6
-TensorRT: 10.3.0
-DeepStream SDK: 7.1
-ONNX Runtime: 1.16.0
-GStreamer: 1.0
-OpenCV: 4.8.0
-Python: 3.8+
-```
+> Подробные таблицы метрик (per-class, контраст с US-моделями, причины FAIL) — в спецификациях моделей и в `results_collected/FINAL_REPORT.md`.
 
 ---
 
-## 📊 Текущее состояние
+## 🗂️ Датасеты
 
-### ✅ Завершённые задачи (Milestone 1)
+Источник пар «задача × датасет»: [`datasets.md`](datasets.md).
 
-- [x] **LPR_STN_PRE_POST Baseline Evaluation** (14.01.2026)
-  - Протестировано на 4893 образцах
-  - Метрики: 99.44% char accuracy, 98.75% plate accuracy
-  - Модель одобрена для production БЕЗ ИЗМЕНЕНИЙ
-  - Документация: `docs/experiments/lpr_stn_baseline_evaluation.md`
+| Задача | Датасет | Назначение | Лицензия | Спека |
+|--------|---------|------------|----------|-------|
+| Detection | **BDD100K** | детекция ТС (дорожная съёмка), val ~10K | UC Berkeley custom (комм. → OTL) | [📄](docs/about_datasets/bdd100k.md) |
+| LP Detection | **AUTO.RIA Numberplate 2021-05-12** | 8042 кадра, VIA-полигоны пластин | **CC BY 4.0** ✅ | [📄](docs/about_datasets/autoria_numberplate_detection_ru.md) |
+| OCR | **autoriaNumberplateOcrRu 2021-09-01** | 57 120 кропов RU-номеров (ГОСТ-Р 50577) | **CC BY 4.0** ✅ | [📄](docs/about_datasets/autoria_numberplate_ocr_ru.md) |
+| Color | **MAD-Cars (Yandex)** | 360° съёмки, 14/15 цветов | **CC BY-NC-SA 4.0** (NonCommercial) | [📄](docs/about_datasets/mad_cars.md) |
+| Make | **VMMRdb** | 9170 классов make/model/year (US) | репо MIT; права на фото — TBD | [📄](docs/about_datasets/vmmrdb.md) |
+| Type | **Stanford Cars** | 16 185 изобр., 196 классов | ImageNet-like (non-commercial) | [📄](docs/about_datasets/stanford_cars.md) |
+| Face Detection | **WIDER FACE** | val 3226 изобр., AP Easy/Med/Hard | **CC BY-NC-ND 4.0** (NonCommercial) | [📄](docs/about_datasets/wider_face.md) |
 
-- [x] **Подготовка инфраструктуры для тестирования** (14.01.2026)
-  - Каталог российских датасетов: `docs/datasets/russian_vehicle_datasets.md`
-  - Руководство по тестированию: `docs/datasets/README_TESTING_GUIDE.md`
-  - Скрипты для быстрого старта: `scripts/quick_test_baseline.sh`
-
-- [x] **Системная документация**
-  - Архитектура системы: `docs/architecture.md`
-  - ML System Design: `docs/system-design/ML_System_Design_Document.md`
-  - План работы: `docs/rules/plan.md`
-
-### 🔄 В работе (Current Sprint)
-
-- [ ] **TrafficCamNet Baseline Evaluation** (Приоритет 1)
-  - Подготовка тестового датасета (2000+ кадров)
-  - Тестирование на российских дорогах
-  - Сравнение с альтернативными архитектурами (YOLOv8, EfficientDet)
-
-### 📅 Запланировано (Next Milestones)
-
-**Q1 2026:**
-- [ ] Baseline evaluation остальных моделей (LPDNet, bae_model_f3, VehicleMakeNet, VehicleTypeNet, FaceDetect)
-- [ ] Prometheus metrics + Grafana dashboards
-- [ ] Structured logging (JSON format)
-- [ ] Unit tests (critical paths)
-
-**Q2 2026:**
-- [ ] Multi-camera support (2-3 streams)
-- [ ] Webhook notifications
-- [ ] Cloud backup (S3 compatible)
-- [ ] INT8 quantization для всех моделей
-
-**Q3-Q4 2026:**
-- [ ] Additional LP alphabets (EU, CN)
-- [ ] Vehicle damage detection
-- [ ] Speed estimation
-- [ ] Fleet management integration
+> Доменный разрыв — сквозная причина провалов: датасеты ракурса «уровень земли / каталог / толпа» расходятся с automotive POV CarCV (бортовая съёмка, дистанция 5–50 м, угол 0–30°, day/night/IR). Для WIDER FACE рекомендован automotive-срез (`14--Traffic`, `5--Car_Accident`, `59--people--driving--car`).
 
 ---
 
-## 🚀 Установка и запуск
+## ⚖️ Лицензии и ограничения
 
-### Предварительные требования
+Перед коммерческой поставкой по каждому пункту требуется **legal review**:
+
+- **NVIDIA TAO / NGC** (TrafficCamNet, VehicleMakeNet, VehicleTypeNet, FaceDetect) — модели под NVIDIA AI / TAO model EULA; право на встраивание и дистрибуцию весов/engine в коммерческий продукт нужно подтвердить.
+- **Nomeroff Net** (nomeroff_lpd, nomeroff_ocr) — код **GPL-3.0 (copyleft)**: включение в дистрибутив влечёт обязательства по раскрытию исходников производных работ; лицензия на сами веса (`.pt` / `.ckpt`) не подтверждена.
+- **bae_model_f3** — лицензия и происхождение весов **неизвестны**; файл вне репозитория и вне NGC. Без легализации источника — в продукт не включать.
+- **Датасеты с NonCommercial** (WIDER FACE, MAD-Cars, Stanford Cars) — только внутренний research-бенчмаркинг; публикация метрик/артефактов вовне требует согласования. **CC BY 4.0** (оба AUTO.RIA) — безопасны для коммерции при атрибуции.
+
+---
+
+## 🖥️ Целевая платформа
+
+```
+NVIDIA Jetson Orin Nano 8GB  (целевое устройство продакшн-CarCV)
+├─ GPU: 1024 CUDA cores (Ampere) · 40 TOPS (INT8)
+├─ CPU: 6-core ARM Cortex-A78AE
+├─ RAM: 8GB LPDDR5 (unified)
+└─ Стек: JetPack 6.x · DeepStream SDK · TensorRT (FP16/INT8)
+```
+
+> ⚠️ **Latency/FPS на Jetson в этом репозитории НЕ измерялись.** Цифры вида «8–10 ms», «30 FPS», «<50 ms» из legacy-доков — **аспирационные**. Валидация выполняется на x86 GPU (ONNX Runtime); точность ONNX = верхняя граница для TensorRT-движка. Отдельный риск — `nomeroff_lpd` (YOLOv11x, самая тяжёлая модель стека): фактическую задержку на Orin Nano необходимо измерить до продакшена.
+
+---
+
+## 🚀 Как запустить валидацию
 
 ```bash
-# Аппаратура
-- NVIDIA Jetson Orin Nano 8GB (или выше)
-- Camera (CSI-2 / USB / RTSP)
-- NVMe SSD 128+ GB
-- Power supply 5V/4A
+# 1) Загрузка весов TAO-моделей (TrafficCamNet, Make/Type) в deploy/models/
+bash deploy/scripts/download_models.sh
 
-# Программное обеспечение
-- JetPack 6.2 (Ubuntu 22.04)
-- DeepStream SDK 7.1
-- Python 3.8+
+# 2) Загрузка датасетов (см. ссылки и пути в datasets.md)
+#    например, для OCR/LP — архивы Nomeroff Net; для Detection — bdd100k.zip
+
+# 3) Прогон эвалуатора нужной модели (пороги и препроцессинг — в EVAL_CONFIGS)
+python deploy/evaluation/evaluate.py            # см. eval_<model> внутри
+
+# 4) Сводка по результатам
+python deploy/evaluation/aggregate_summary.py
 ```
 
-### Установка
+По правилам проекта (`CLAUDE.md`): результаты сохраняются в `results/` как **JSON + CSV**, графики — в `plots/` (PNG), воспроизводимый код — в `notebooks/`, итог эксперимента — в `results/SUMMARY.md`.
 
-```bash
-# 1. Клонировать репозиторий
-git clone <repo-url>
-cd CarCV
+Ключевые файлы:
 
-# 2. Установить зависимости
-sudo apt update
-sudo apt install -y deepstream-7.1 python3-pip python3-opencv
-pip3 install -r requirements.txt
-
-# 3. Скомпилировать приложение
-make CUDA_VER=12.6 clean all
-
-# 4. Создать директории
-mkdir -p lp_images car_images face_images results/baseline
-```
-
-### Запуск
-
-```bash
-# Вариант 1: Из видеофайла
-./deepstream-vehicle-analyzer file sample.mp4 my.db false &
-python3 lp_and_color_recognition_prod.py my.db --api-port 8080 &
-
-# Вариант 2: Из RTSP потока
-./deepstream-vehicle-analyzer rtsp rtsp://camera/stream my.db false &
-python3 lp_and_color_recognition_prod.py my.db --api-port 8080 &
-
-# Вариант 3: Из USB камеры
-./deepstream-vehicle-analyzer usb /dev/video0 my.db false &
-python3 lp_and_color_recognition_prod.py my.db --api-port 8080 &
-
-# Проверка работы
-curl http://localhost:8080/api/health
-# {"status": "ok", "uptime": 123}
-```
-
-### Web Interface
-
-Открыть в браузере: `http://<jetson-ip>:8080`
-
-Функционал:
-- ✅ Лента детекций в реальном времени
-- ✅ Добавление паттернов номеров для отслеживания
-- ✅ Просмотр списка отслеживаемых номеров
-- ✅ Автообновление каждые 2-5 секунд
+- `deploy/evaluation/evaluate.py` — эвалуаторы `eval_<model>`, препроцессинг, декодеры, пороги (`EVAL_CONFIGS`).
+- `deploy/evaluation/metrics.py` — расчёт метрик (`compute_detection_metrics`, `compute_ocr_metrics`).
+- `deploy/scripts/download_models.sh` — загрузка весов (US-модели LPDNet/LPRNet — как контрольные baseline).
+- `results_collected/.../metrics.json` — измеренные результаты; `results_collected/FINAL_REPORT.md` — сводный отчёт.
 
 ---
 
 ## 📚 Документация
 
-### Основные документы
-
 | Документ | Описание |
 |----------|----------|
-| [`docs/architecture.md`](docs/architecture.md) | Архитектура системы (7 моделей, pipeline, API) |
-| [`docs/system-design/ML_System_Design_Document.md`](docs/system-design/ML_System_Design_Document.md) | ML System Design (требования, развёртывание) |
-| [`docs/rules/plan.md`](docs/rules/plan.md) | План обучения и оценки моделей |
-| [`docs/rules/arch-rules.md`](docs/rules/arch-rules.md) | Архитектурные правила |
-
-### Датасеты и тестирование
-
-| Документ | Описание |
-|----------|----------|
-| [`docs/datasets_and_models_overview.md`](docs/datasets_and_models_overview.md) | **НОВЫЙ:** Обзор открытых датасетов и SOTA моделей 2025-2026 ⭐ |
-| [`docs/datasets/SUMMARY.md`](docs/datasets/SUMMARY.md) | Резюме подготовки датасетов |
-| [`docs/datasets/russian_vehicle_datasets.md`](docs/datasets/russian_vehicle_datasets.md) | Каталог российских датасетов |
-| [`docs/datasets/README_TESTING_GUIDE.md`](docs/datasets/README_TESTING_GUIDE.md) | Руководство по тестированию |
-
-### Эксперименты и результаты
-
-| Документ | Описание |
-|----------|----------|
-| [`docs/experiments/SUMMARY_14_01_2026.md`](docs/experiments/SUMMARY_14_01_2026.md) | Сводка обновлений 14.01.2026 |
-| [`docs/experiments/lpr_stn_baseline_evaluation.md`](docs/experiments/lpr_stn_baseline_evaluation.md) | Детальный отчёт по LPR_STN ⭐ |
-
-### Notebooks
-
-| Notebook | Описание |
-|----------|----------|
-| [`notebooks/3.6_LPR_STN_PRE_POST_Baseline_Evaluation.ipynb`](notebooks/3.6_LPR_STN_PRE_POST_Baseline_Evaluation.ipynb) | Baseline evaluation LPR_STN |
+| [`models.md`](models.md) · [`datasets.md`](datasets.md) | Источники истины: реестр моделей и пары «модель × датасет» |
+| [`docs/about_models/`](docs/about_models) | Спецификации моделей (архитектура, препроцессинг, валидация, лицензия) |
+| [`docs/about_datasets/`](docs/about_datasets) | Спецификации датасетов (структура, аннотации, лицензия, рекомендации) |
+| [`docs/superpowers/specs/2026-06-02-validation-campaign-5-models-design.md`](docs/superpowers/specs/2026-06-02-validation-campaign-5-models-design.md) | Дизайн валидационной кампании на 5 моделей |
+| [`docs/architecture.md`](docs/architecture.md) | Архитектура системы (**legacy-стек**, читать с поправкой на актуальный `models.md`) |
+| [`docs/system-design/ML_System_Design_Document.md`](docs/system-design/ML_System_Design_Document.md) | ML System Design (требования §5–6; **legacy-метрики непроверены**) |
 
 ---
 
-## 🗺️ Roadmap
+## 🧭 Статус кампании и дальнейшие шаги
 
-### 2026 Q1 - Foundation ✅ (частично завершено)
+**Закрыто (измерено, вердикт зафиксирован):**
 
-- [x] LPR_STN_PRE_POST baseline (99.44% accuracy)
-- [x] Документация системы
-- [x] Инфраструктура для тестирования
-- [ ] TrafficCamNet baseline evaluation
-- [ ] Остальные модели baseline evaluation
+- [x] `nomeroff_lpd` → AUTO.RIA Detection — **PASS** (P=0.91 / R=0.92)
+- [x] `nomeroff_ocr` → autoriaNumberplateOcrRu/val — **PASS** (char 0.9995 / plate 0.9978)
+- [x] `VehicleTypeNet` → Stanford Cars — **FAIL** (Top-1 0.358), окончательно
 
-### 2026 Q2 - Optimization
+**В работе / запланировано:**
 
-- [ ] Multi-camera support (2-3 streams)
-- [ ] INT8 quantization (2× speed boost)
-- [ ] Prometheus + Grafana monitoring
-- [ ] Cloud backup integration
-- [ ] Mobile-friendly Web UI
-
-### 2026 Q3 - Features
-
-- [ ] Additional LP alphabets (EU, China)
-- [ ] Vehicle damage detection
-- [ ] Speed estimation
-- [ ] Direction detection
-- [ ] Docker containerization
-
-### 2026 Q4 - Production
-
-- [ ] Fleet management integration
-- [ ] Analytics dashboard
-- [ ] A/B testing framework
-- [ ] Model auto-update mechanism
+- [ ] `TrafficCamNet` → перегон на **настоящем BDD100K val** (загрузчик + конверсия меток BDD → 4 класса)
+- [ ] `VehicleMakeNet` → перегон на **VMMRdb** (загрузчик каталогов-классов `make_model_year`, mapping 20 марок)
+- [ ] `FaceDetect` → реализовать эвалуатор `eval_facedetect` с нуля (экспорт `.etlt`→ONNX, AP Easy/Med/Hard)
+- [ ] `bae_model_f3` (Color) → легализовать веса и завести Color-эвалуатор, **либо** обучить кастомный 15-классовый классификатор на MAD-Cars `color`
+- [ ] Синхронизировать расхождения версий в `models.md` (TrafficCamNet/Make/Type) с фактически загружаемыми
 
 ---
 
-## 📈 Метрики проекта
+## 📝 Лицензия проекта
 
-### Модели ML
-
-| Модель | Precision/Accuracy | Recall | Latency | Статус |
-|--------|-------------------|--------|---------|--------|
-| TrafficCamNet | 0.92-0.95 | 0.88-0.92 | 8-10 ms | ✅ Production |
-| VehicleMakeNet | 0.76 (Top-1) | - | 4-5 ms | ✅ Production |
-| VehicleTypeNet | 0.88 | - | 3-4 ms | ✅ Production |
-| LPDNet | - | 0.85-0.90 | 2-3 ms | ✅ Production |
-| FaceDetect | - | - | 3-5 ms | ⚠️ Needs eval |
-| **LPR_STN** | **99.44%** (char) | - | **5.04 ms** | ✅ **Excellent** |
-| bae_model_f3 | 0.84 | - | 15 ms | ✅ Production |
-
-### Система (целевые метрики)
-
-- **FPS:** ≥30 (1080p input) ✅
-- **Latency:** <50 ms ✅
-- **Power:** <25W ✅
-- **Uptime:** 99% (72h) 🔄
+Proprietary © 2026 CARS Team. Лицензии моделей и датасетов — см. раздел [«Лицензии и ограничения»](#-лицензии-и-ограничения) и спеки.
 
 ---
 
-## 🏆 Ключевые достижения
-
-1. ⭐ **LPR_STN_PRE_POST - 99.44% Character Accuracy**
-   - Превышает целевые метрики на 9.4%
-   - Только 61 ошибка из 4893 образцов (1.25%)
-   - Одобрена для production без изменений
-
-2. 🚀 **Real-time Performance - 30 FPS @ 1080p**
-   - End-to-end latency ~40-50 ms
-   - Работает на edge device без облака
-
-3. 📊 **Комплексный анализ ТС**
-   - 7 специализированных нейросетей
-   - Детекция, распознавание, классификация, трекинг
-
-4. 🔧 **Production-ready Architecture**
-   - DeepStream + TensorRT для GPU
-   - ONNX Runtime для Python models
-   - SQLite + REST API + Web UI
-
----
-
-## 👥 Команда и контрибуция
-
-**Разработчики:** CARS Development Team
-
-**Правила контрибуции:**
-- Следовать архитектурным правилам: `docs/rules/arch-rules.md`
-- Все изменения ML моделей документировать в `docs/experiments/`
-- Обновлять `docs/architecture.md` при изменении системы
-- Обновлять этот README при добавлении новых feature
-
----
-
-## 📝 Лицензия
-
-Proprietary © 2026 CARS Team
-
----
-
-## 📞 Контакты
-
-**Репозиторий:** `/home/user/CarCV`  
-**Документация:** `docs/`  
-**Эксперименты:** `docs/experiments/`  
-**Результаты:** `results/baseline/`
-
----
-
-## 🔖 Версия
-
-**Версия README:** 1.0.1  
-**Дата обновления:** 17 января 2026  
-**Последнее изменение:** Добавлен обзор открытых датасетов и моделей для улучшения детекторов
-
----
-
-<p align="center">
-  <strong>CarCV</strong> - Intelligent Vehicle Recognition on the Edge
-</p>
-
-<p align="center">
-  Powered by NVIDIA Jetson | DeepStream SDK | TensorRT | ONNX Runtime
-</p>
+**Версия README:** 2.0.0 · **Обновлён:** 2026-06-04 · приведён в соответствие со спецификациями `docs/about_models/` и `docs/about_datasets/` (актуальный RU-стек, измеренные метрики, честные вердикты PASS/FAIL).
