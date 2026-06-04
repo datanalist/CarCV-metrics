@@ -1,0 +1,59 @@
+{
+  "metrics": {
+    "top1_accuracy": 0.6205,
+    "top3_accuracy": 0.8395,
+    "num_samples": 2000,
+    "per_class_accuracy": {
+      "black": 0.8974,
+      "white": 0.7936,
+      "blue": 0.4793,
+      "grey": 0.4013,
+      "brown": 0.506,
+      "silver": 0.4359,
+      "beige": 0.15,
+      "red": 0.7304,
+      "orange": 0.5,
+      "green": 0.4133,
+      "purple": 0.0,
+      "gold": 0.0,
+      "yellow": 0.6154
+    },
+    "best_group_min": 0.4793,
+    "challenging_group_min": 0.0,
+    "coverage_classes": [
+      "beige",
+      "black",
+      "blue",
+      "brown",
+      "gold",
+      "green",
+      "grey",
+      "orange",
+      "purple",
+      "red",
+      "silver",
+      "white",
+      "yellow"
+    ],
+    "coverage": "13/15"
+  },
+  "thresholds": {
+    "overall": {
+      "value": 0.6205,
+      "threshold": 0.8,
+      "status": "FAIL"
+    },
+    "best_group_min": {
+      "value": 0.4793,
+      "threshold": 0.9,
+      "status": "FAIL"
+    },
+    "challenging_group_min": {
+      "value": 0.0,
+      "threshold": 0.7,
+      "status": "FAIL"
+    }
+  },
+  "skipped": 0,
+  "model": "bae_model_f3 EfficientNet-B3 (color)"
+}

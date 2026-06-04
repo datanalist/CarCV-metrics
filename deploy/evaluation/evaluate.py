@@ -43,6 +43,49 @@ log = logging.getLogger(__name__)
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
+COLOR_CLASSES = [
+    "beige", "black", "blue", "brown", "gold", "green", "grey", "orange",
+    "pink", "purple", "red", "silver", "tan", "white", "yellow",
+]
+COLOR_MEAN = np.array([0.43, 0.40, 0.39], dtype=np.float32)
+COLOR_STD = np.array([0.27, 0.26, 0.26], dtype=np.float32)
+
+# MAD-Cars hex → класс цвета CARS (docs/about_datasets/mad_cars.md §HEX_TO_CARS_COLOR).
+# 16 hex → 14 имён (нет tan; два hex для blue и red).
+HEX_TO_CARS_COLOR = {
+    "000000": "black", "ffffff": "white", "9c9999": "grey", "cacecb": "silver",
+    "0000ff": "blue", "0088ff": "blue", "ff0000": "red", "cc0033": "red",
+    "926547": "brown", "34ba2b": "green", "ffefd5": "beige",
+    "ff9966": "orange", "9966cc": "purple", "fde910": "yellow",
+    "ffcc00": "gold", "ffc0cb": "pink",
+}
+
+
+def preprocess_color(img_bgr: np.ndarray, size: int = 384) -> np.ndarray:
+    """Color (bae_model_f3): BGR→RGB, /255, (x-mean)/std, NCHW. mean/std из System Design §6.5."""
+    img = cv2.resize(img_bgr, (size, size))
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+    img = (img - COLOR_MEAN) / COLOR_STD
+    return img.transpose(2, 0, 1)[None]
+
+
+def load_madcars_color_index(jsonl_path, dedup: bool = True) -> list:
+    """images_index.jsonl → список строк; dedup по car_id (1 view/car) для headline-метрики."""
+    rows, seen = [], set()
+    with open(jsonl_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            r = json.loads(line)
+            if dedup:
+                cid = r.get("car_id")
+                if cid in seen:
+                    continue
+                seen.add(cid)
+            rows.append(r)
+    return rows
+
 
 def get_ort_session(model_path: str) -> ort.InferenceSession:
     providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
@@ -974,6 +1017,96 @@ def eval_nomeroff_ocr(cfg: dict) -> dict:
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
+def eval_color(cfg: dict) -> dict:
+    model_path = ROOT / cfg["model_path"]
+    data_dir = ROOT / cfg["data_dir"]
+    results_dir = ROOT / cfg["results_dir"]
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    if not model_path.exists():
+        log.error(f"Color model not found: {model_path}")
+        return {"error": "model not found"}
+
+    index_path = data_dir / "images_index.jsonl"
+    if not index_path.exists():
+        log.error(f"MAD-Cars index not found: {index_path}")
+        return {"error": "dataset not found"}
+
+    rows = load_madcars_color_index(index_path, dedup=True)
+    sess = get_ort_session(str(model_path))
+    input_name = sess.get_inputs()[0].name
+
+    predictions, ground_truths = [], []
+    skipped = 0
+    cm = np.zeros((len(COLOR_CLASSES), len(COLOR_CLASSES)), dtype=int)
+
+    for r in tqdm(rows, desc="Color", unit="img"):
+        gt = HEX_TO_CARS_COLOR.get((r.get("color") or "").lower())
+        if gt is None:
+            skipped += 1
+            continue
+        img_path = data_dir / r["image_path"]
+        img = cv2.imread(str(img_path))
+        if img is None:
+            skipped += 1
+            continue
+        inp = preprocess_color(img, size=384)
+        logits = sess.run(None, {input_name: inp})[0][0]
+        probs = softmax(logits)            # граф отдаёт логиты — softmax в постобработке
+        order = probs.argsort()[::-1]
+        top_k = [COLOR_CLASSES[i] for i in order[:3]]
+        predictions.append({"image_id": r["image_id"], "top_k": top_k})
+        ground_truths.append({"image_id": r["image_id"], "label": gt})
+        cm[COLOR_CLASSES.index(gt), COLOR_CLASSES.index(top_k[0])] += 1
+
+    if not predictions:
+        return {"error": "no images"}
+
+    m = compute_classification_metrics(predictions, ground_truths)
+    md = m.to_dict()
+    pca = md["per_class_accuracy"]
+    best = ["black", "white", "red", "blue"]
+    challenging = ["beige", "tan", "gold", "silver"]
+    best_min = min([pca[c] for c in best if c in pca], default=0.0)
+    chal_min = min([pca[c] for c in challenging if c in pca], default=0.0)
+
+    metrics_for_thr = {"overall": md["top1_accuracy"],
+                       "best_group_min": best_min,
+                       "challenging_group_min": chal_min}
+    thresholds = {"overall": 0.80, "best_group_min": 0.90,
+                  "challenging_group_min": 0.70}
+    status = check_thresholds(metrics_for_thr, thresholds)
+
+    covered = sorted({g["label"] for g in ground_truths})
+    result = {
+        "metrics": {**md, "best_group_min": best_min,
+                    "challenging_group_min": chal_min,
+                    "coverage_classes": covered,
+                    "coverage": f"{len(covered)}/15"},
+        "thresholds": status, "skipped": skipped,
+        "model": "bae_model_f3 EfficientNet-B3 (color)",
+    }
+    (results_dir / "metrics.json").write_text(json.dumps(result, indent=2))
+
+    import csv
+    with open(results_dir / "per_class_metrics.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["class", "accuracy"])
+        for cls in COLOR_CLASSES:
+            w.writerow([cls, pca.get(cls, "")])
+
+    if cm.sum() > 0:
+        plot_confusion_matrix(cm, COLOR_CLASSES, "Color (bae_model_f3)",
+                              str(ROOT / "plots" / "color_confusion.png"))
+    if pca:
+        plot_per_class_accuracy(pca, "Color (bae_model_f3)", 0.80,
+                                str(ROOT / "plots" / "color_per_class.png"))
+
+    log.info(f"Color: Top1={m.top1_accuracy:.3f} best_min={best_min:.3f} "
+             f"chal_min={chal_min:.3f} coverage={len(covered)}/15 skipped={skipped}")
+    return result
+
+
 EVAL_CONFIGS = {
     "trafficcamnet": {
         "model_path": "models/trafficcamnet/resnet18_trafficcamnet_pruned.onnx",
@@ -1023,6 +1156,12 @@ EVAL_CONFIGS = {
         "data_dir": "data/nomeroff_ocr_ru",
         "results_dir": "results/nomeroff_ocr",
         "eval_fn": eval_nomeroff_ocr,
+    },
+    "color": {
+        "model_path": "models/color/bae_model_f3.onnx",   # перекрывается local_paths.yaml
+        "data_dir": "data/mad_cars",                        # перекрывается local_paths.yaml
+        "results_dir": "results/color",
+        "eval_fn": eval_color,
     },
 }
 
