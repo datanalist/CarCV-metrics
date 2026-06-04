@@ -1,198 +1,87 @@
-# CARS Model Evaluation — Aggregated Summary
+# CARS — Локальная валидационная кампания (итоговая агрегация)
 
-_Generated 2026-05-17 by `deploy/evaluation/aggregate_summary.py` from `results_collected/`._
+_Сгенерировано 2026-06-04 (Task 8: финальная агрегация) из `results/<model>/metrics.json` + `EXPERIMENT.md`._
 
-**Runs aggregated:** 13 across 3 host(s): `qudata2`, `ssh1.qudata.ai`, `ssh9.qudata.ai`.
-**Families:** classification, detection, ocr.
+**Окружение:** локальный прогон на **RTX 3090**, **CUDAExecutionProvider**, **onnxruntime 1.24** (1.24.4),
+**Python 3.13** (3.13.11), `.venv`. Это **локальная** кампания — НЕ удалённый прогон qudata (его архив —
+`results_collected/`, см. «Контекст и ограничения»).
 
-## Overall Results
+**Итог: 0 PASS / 4 FAIL / 2 DEFERRED / 1 UNDEF** (7 пар модель×датасет).
 
-| Model | Family | Host | Metric | Value | Threshold | Status |
-|---|---|---|---|---:|---|---|
-| `lpdnet` | detection | `qudata2` | precision | 0.8837 | ≥0.7 | ✅ PASS |
-| `lpdnet` | detection | `qudata2` | recall | 0.2961 | ≥0.8 | ❌ FAIL |
-| `lpdnet` | detection | `qudata2` | f1 | 0.4436 | — | — |
-| `lpdnet` | detection | `qudata2` | map50 | 0.2617 | — | — |
-| `lprnet` | ocr | `qudata2` | char_accuracy | 0.5903 | ≥0.9 | ❌ FAIL |
-| `lprnet` | ocr | `qudata2` | full_plate_accuracy | 0.0621 | ≥0.8 | ❌ FAIL |
-| `trafficcamnet` | detection | `qudata2` | precision | 0.1671 | ≥0.9 | ❌ FAIL |
-| `trafficcamnet` | detection | `qudata2` | recall | 0.0316 | ≥0.85 | ❌ FAIL |
-| `trafficcamnet` | detection | `qudata2` | f1 | 0.0531 | ≥0.87 | ❌ FAIL |
-| `trafficcamnet` | detection | `qudata2` | map50 | 0.0192 | — | — |
-| `vehiclemakenet` | classification | `qudata2` | top1_accuracy | 0.0829 | ≥0.7 | ❌ FAIL |
-| `vehiclemakenet` | classification | `qudata2` | top3_accuracy | 0.2114 | ≥0.85 | ❌ FAIL |
-| `trafficcamnet` | detection | `ssh1.qudata.ai` | precision | 0.1671 | ≥0.9 | ❌ FAIL |
-| `trafficcamnet` | detection | `ssh1.qudata.ai` | recall | 0.0316 | ≥0.85 | ❌ FAIL |
-| `trafficcamnet` | detection | `ssh1.qudata.ai` | f1 | 0.0531 | ≥0.87 | ❌ FAIL |
-| `trafficcamnet` | detection | `ssh1.qudata.ai` | map50 | 0.0192 | — | — |
-| `vehiclemakenet` | classification | `ssh1.qudata.ai` | top1_accuracy | 0.0020 | ≥0.7 | ❌ FAIL |
-| `vehiclemakenet` | classification | `ssh1.qudata.ai` | top3_accuracy | 0.0147 | ≥0.85 | ❌ FAIL |
-| `lpdnet` | detection | `ssh9.qudata.ai` | precision | 0.8837 | ≥0.7 | ✅ PASS |
-| `lpdnet` | detection | `ssh9.qudata.ai` | recall | 0.2961 | ≥0.8 | ❌ FAIL |
-| `lpdnet` | detection | `ssh9.qudata.ai` | f1 | 0.4436 | — | — |
-| `lpdnet` | detection | `ssh9.qudata.ai` | map50 | 0.2616 | — | — |
-| `lprnet` | ocr | `ssh9.qudata.ai` | char_accuracy | 0.5904 | ≥0.9 | ❌ FAIL |
-| `lprnet` | ocr | `ssh9.qudata.ai` | full_plate_accuracy | 0.0621 | ≥0.8 | ❌ FAIL |
-| `nomeroff_lpd` | detection | `ssh9.qudata.ai` | precision | 0.9056 | ≥0.7 | ✅ PASS |
-| `nomeroff_lpd` | detection | `ssh9.qudata.ai` | recall | 0.9221 | ≥0.8 | ✅ PASS |
-| `nomeroff_lpd` | detection | `ssh9.qudata.ai` | f1 | 0.9138 | — | — |
-| `nomeroff_lpd` | detection | `ssh9.qudata.ai` | map50 | 0.8806 | — | — |
-| `nomeroff_ocr` | ocr | `ssh9.qudata.ai` | char_accuracy | 0.9995 | ≥0.9 | ✅ PASS |
-| `nomeroff_ocr` | ocr | `ssh9.qudata.ai` | full_plate_accuracy | 0.9978 | ≥0.8 | ✅ PASS |
-| `trafficcamnet` | detection | `ssh9.qudata.ai` | precision | 0.0819 | ≥0.9 | ❌ FAIL |
-| `trafficcamnet` | detection | `ssh9.qudata.ai` | recall | 0.0528 | ≥0.85 | ❌ FAIL |
-| `trafficcamnet` | detection | `ssh9.qudata.ai` | f1 | 0.0642 | ≥0.87 | ❌ FAIL |
-| `trafficcamnet` | detection | `ssh9.qudata.ai` | map50 | 0.0192 | — | — |
-| `vehiclemakenet` | classification | `ssh9.qudata.ai` | top1_accuracy | 0.0829 | ≥0.7 | ❌ FAIL |
-| `vehiclemakenet` | classification | `ssh9.qudata.ai` | top3_accuracy | 0.2114 | ≥0.85 | ❌ FAIL |
-| `vehicletypenet` | classification | `ssh9.qudata.ai` | top1_accuracy | 0.3575 | ≥0.85 | ❌ FAIL |
-| `vehicletypenet` | classification | `ssh9.qudata.ai` | top3_accuracy | 0.7009 | — | — |
+## Сводная таблица (все 7 пар)
 
-## US baseline vs Nomeroff RU (where both ran)
+| Модель | Датасет | Ключевые метрики (измерено) | Пороги | Вердикт |
+|---|---|---|---|:--:|
+| `trafficcamnet` | BDD100K val (10 000 img) | car: P=0.3909, R=0.2584, F1=0.3111 (conf_thr=0.2) | P≥0.90, R≥0.85, F1≥0.87 | ❌ **FAIL** |
+| `vehicletypenet` | Stanford Cars (TRAIN, 7577 img; 567 пропущено) | Top-1=0.3549, Top-3=0.6932 | Top-1≥0.85 | ❌ **FAIL** |
+| `vehiclemakenet` | VMMRdb (243 519 img) | Top-1=0.4387, Top-3=0.6250 | Top-1≥0.70, Top-3≥0.85 | ❌ **FAIL** |
+| `color` (bae_model_f3) | MAD-Cars (2000 dedup img; покрытие 13/15) | Top-1=0.6205, Top-3=0.8395; best_group_min=0.4793; challenging_group_min=0.0 | overall≥0.80, best_group_min≥0.90, challenging_group_min≥0.70 | ❌ **FAIL** |
+| `nomeroff_lpd` | AUTO.RIA Numberplate (detection, val) | локально НЕ измерено | P≥0.70, R≥0.80 | ⏸️ **DEFERRED** |
+| `nomeroff_ocr` | AUTO.RIA Numberplate (OCR) | локально НЕ измерено | CharAcc≥0.90, PlateAcc≥0.80 | ⏸️ **DEFERRED** |
+| `facedetect` (FaceNet) | WIDER FACE val | модель недоступна (ONNX не получен) | AP@0.5≥0.50 (Easy≥0.80/Med≥0.70/Hard≥0.50) | ❓ **UNDEF** |
 
-| Pipeline | Metric | US baseline | Nomeroff RU | Δ |
-|---|---|---:|---:|---:|
-| LPD | precision | 0.8837 | **0.9056** | +0.0219 |
-| LPD | recall | 0.2961 | **0.9221** | +0.6260 |
-| LPD | f1 | 0.4436 | **0.9138** | +0.4702 |
-| LPD | map50 | 0.2617 | **0.8806** | +0.6189 |
-| OCR | char_accuracy | 0.5903 | **0.9995** | +0.4092 |
-| OCR | full_plate_accuracy | 0.0621 | **0.9978** | +0.9357 |
+## Заметки по парам
 
-## Detailed Results
+### Измеренные FAIL (4)
 
-### `vehiclemakenet` @ `qudata2`  (classification)
+- **`trafficcamnet` × BDD100K → FAIL.** Доменный разрыв: TrafficCamNet обучен на видах с дорожных камер
+  (сверху/под углом), BDD100K — бортовая съёмка с уровня дороги. car P=0.3909 / R=0.2584 / F1=0.3111
+  при conf_thr=0.2 — ниже порогов (P≥0.90, R≥0.85, F1≥0.87). Выше прежнего суррогата COCO val2017
+  (там car F1≈0.0642), но порогов кампании не достигает. Окончательный валидный результат.
 
-- **top1_accuracy**: 0.0829
-- **top3_accuracy**: 0.2114
-- **num_samples**: 700
-- **per_class_accuracy**: `acura`=0.0000, `audi`=0.0000, `bmw`=0.0571, `chevrolet`=0.1143, `chrysler`=0.0000, `dodge`=0.0286, `ford`=0.1429, `gmc`=0.1143, `honda`=0.1143, `hyundai`=0.1714, `infiniti`=0.0000, `jeep`=0.1714, `kia`=0.0286, `lexus`=0.0571, `mazda`=0.1143, `mercedes`=0.0286, `nissan`=0.0857, `subaru`=0.0000, `toyota`=0.2857, `volkswagen`=0.1429
-- _source_: `results_collected/qudata2/vehiclemakenet/metrics.json`
+- **`vehicletypenet` × Stanford Cars (TRAIN-сплит) → FAIL.** Top-1=0.3549 < 0.85 (Top-3=0.6932 справочно).
+  Из 8144 записей отобрано 7577, пропущено 567 (нет ключевого слова типа кузова). Причина — доменный
+  разрыв + **шумные суррогатные метки**: Stanford размечен по make/model, тип кузова выводится по
+  ключевым словам (`convertible→coupe`, `wagon→sedan` и т.п.); класс `largevehicle` на Stanford
+  отсутствует. Лучший класс `truck` 0.6137, худший `sedan` 0.2867.
 
-### `lpdnet` @ `qudata2`  (detection)
+- **`vehiclemakenet` × VMMRdb → FAIL.** Top-1=0.4387 < 0.70 и Top-3=0.6250 < 0.85 на 243 519 изображениях
+  (20 NGC-марок US/EU-рынка, OOD-каталоги отфильтрованы заранее, `skipped_ood=0`). При этом результат
+  **существенно выше** прежнего RU-суррогата mad-cars (Top-1≈0.083 на удалённом прогоне): VMMRdb —
+  US-домен, ближе к US/EU-обучению модели, поэтому массовые марки узнаются заметно лучше (bmw 0.705,
+  mercedes 0.686), но на long-tail (kia 0.205, chrysler 0.195, subaru 0.233) до порога не дотягивает.
 
-- **precision**: 0.8837
-- **recall**: 0.2961
-- **f1**: 0.4436
-- **ap**: 0.2617
-- **map50**: 0.2617
-- **num_gt**: 385
-- **num_pred**: 129
-- **num_tp**: 114
-- _source_: `results_collected/qudata2/lpdnet/metrics.json`
+- **`color` (bae_model_f3) × MAD-Cars → FAIL.** Все три порога не достигнуты: overall Top-1=0.6205 < 0.80;
+  best_group_min=0.4793 < 0.90 (минимум держит `blue`); challenging_group_min=0.0 < 0.70 (минимум держит
+  `gold`=0.0). Top-3=0.8395 (справочно). 2000 изображений (dedup по `car_id`), покрытие 13/15 — отсутствуют
+  `tan` (нет hex-маппинга) и `pink` (hex `ffc0cb` не встретился в локальном sample). **Кавеат:** маппинг
+  индекс→имя класса (COLOR_CLASSES, алфавитный) непроверяем без оригинального файла меток модели — вердикт
+  следует читать как **осторожный (cautious)**, не как коллапс (black 0.897 / white 0.794 / red 0.730
+  узнаются уверенно). Подробности и кавеаты — `results/color/EXPERIMENT.md`.
 
-### `trafficcamnet` @ `qudata2`  (detection)
+### Отложенные DEFERRED (2)
 
-- **precision**: 0.1671
-- **recall**: 0.0316
-- **f1**: 0.0531
-- **ap**: 0.0192
-- **map50**: 0.0192
-- **num_gt**: 1932
-- **num_pred**: 365
-- **num_tp**: 61
-- _source_: `results_collected/qudata2/trafficcamnet/metrics.json`
+- **`nomeroff_lpd` × AUTO.RIA detection → DEFERRED.** Прогон не выполнен. Блокер: `import nomeroff_net`
+  падает — `ModuleNotFoundError: No module named 'modelhub_client'` (PyPI-имя `modelhub-client`
+  отсутствует на PyPI; установка из произвольного git — вне рамок плана). Локальных чисел нет.
+  Прежний **удалённый прогон qudata** (ssh9.qudata.ai): P=0.9056, R=0.9221, F1=0.9138 — _PASS на
+  удалённом прогоне, локально НЕ воспроизведено_ (приводится только как удалённый ориентир).
 
-### `lprnet` @ `qudata2`  (ocr)
+- **`nomeroff_ocr` × AUTO.RIA OCR → DEFERRED.** Тот же блокер `modelhub_client`. Локальных чисел нет.
+  Прежний **удалённый прогон qudata**: CharAcc=0.9995, PlateAcc=0.9978 — _PASS на удалённом прогоне,
+  локально НЕ воспроизведено_.
 
-- **char_accuracy**: 0.5903
-- **full_plate_accuracy**: 0.0621
-- **char_error_rate**: 0.4097
-- **num_samples**: 4893
-- _note_: US Latin model evaluated on RU Cyrillic plates — domain gap expected
-- _source_: `results_collected/qudata2/lprnet/metrics.json`
+### Неопределённый UNDEF (1)
 
-### `vehiclemakenet` @ `ssh1.qudata.ai`  (classification)
+- **`facedetect` (FaceNet) × WIDER FACE → UNDEF.** Не FAIL — измерение не проводилось, т.к. модель не
+  удалось загрузить: FaceNet доступен локально только как зашифрованный `.etlt`, `tao_converter` не
+  установлен, NGC deployable-ONNX URL → HTTP 404. При этом **код готов и данные на месте**:
+  `parse_wider_gt` + `eval_facedetect` реализованы и протестированы (suite 13 passed), WIDER FACE val
+  (GT + images, включая automotive-категории `14--Traffic`, `5--Car_Accident`, `59--people--driving--car`)
+  присутствует. Прогон запускается без изменений кода, как только появится deployable FaceNet ONNX.
 
-- **top1_accuracy**: 0.0020
-- **top3_accuracy**: 0.0147
-- **num_samples**: 4960
-- **per_class_accuracy**: `acura`=0.0020
-- _source_: `results_collected/ssh1.qudata.ai/results/vehiclemakenet/metrics.json`
+## Контекст и ограничения
 
-### `trafficcamnet` @ `ssh1.qudata.ai`  (detection)
-
-- **precision**: 0.1671
-- **recall**: 0.0316
-- **f1**: 0.0531
-- **ap**: 0.0192
-- **map50**: 0.0192
-- **num_gt**: 1932
-- **num_pred**: 365
-- **num_tp**: 61
-- _source_: `results_collected/ssh1.qudata.ai/results/trafficcamnet/metrics.json`
-
-### `vehiclemakenet` @ `ssh9.qudata.ai`  (classification)
-
-- **top1_accuracy**: 0.0829
-- **top3_accuracy**: 0.2114
-- **num_samples**: 700
-- **per_class_accuracy**: `acura`=0.0000, `audi`=0.0000, `bmw`=0.0571, `chevrolet`=0.1143, `chrysler`=0.0000, `dodge`=0.0286, `ford`=0.1429, `gmc`=0.1143, `honda`=0.1143, `hyundai`=0.1714, `infiniti`=0.0000, `jeep`=0.1714, `kia`=0.0286, `lexus`=0.0571, `mazda`=0.1143, `mercedes`=0.0286, `nissan`=0.0857, `subaru`=0.0000, `toyota`=0.2857, `volkswagen`=0.1429
-- _source_: `results_collected/ssh9.qudata.ai/results/vehiclemakenet/metrics.json`
-
-### `vehicletypenet` @ `ssh9.qudata.ai`  (classification)
-
-- **top1_accuracy**: 0.3575
-- **top3_accuracy**: 0.7009
-- **num_samples**: 7483
-- **per_class_accuracy**: `coupe`=0.3160, `sedan`=0.2894, `suv`=0.3928, `truck`=0.6361, `van`=0.3815
-- _source_: `results_collected/ssh9.qudata.ai/results/vehicletypenet/metrics.json`
-
-### `lpdnet` @ `ssh9.qudata.ai`  (detection)
-
-- **precision**: 0.8837
-- **recall**: 0.2961
-- **f1**: 0.4436
-- **ap**: 0.2616
-- **map50**: 0.2616
-- **num_gt**: 385
-- **num_pred**: 129
-- **num_tp**: 114
-- _source_: `results_collected/ssh9.qudata.ai/results/lpdnet/metrics.json`
-
-### `nomeroff_lpd` @ `ssh9.qudata.ai`  (detection)
-
-- **precision**: 0.9056
-- **recall**: 0.9221
-- **f1**: 0.9138
-- **ap**: 0.8806
-- **map50**: 0.8806
-- **num_gt**: 385
-- **num_pred**: 392
-- **num_tp**: 355
-- _note_: nomeroff-net localization (RU)
-- _source_: `results_collected/ssh9.qudata.ai/results/nomeroff_lpd/metrics.json`
-
-### `trafficcamnet` @ `ssh9.qudata.ai`  (detection)
-
-- **precision**: 0.0819
-- **recall**: 0.0528
-- **f1**: 0.0642
-- **ap**: 0.0192
-- **map50**: 0.0192
-- **num_gt**: 1932
-- **num_pred**: 1245
-- **num_tp**: 102
-- **macro**: `ap`=0.0585, `f1`=0.0987, `num_classes_evaluated`=4, `precision`=0.1270, `recall`=0.0831
-- **per_class**: `bicycle`=`{'precision': 0.0429, 'recall': 0.0095, 'f1': 0.0155, 'ap': 0.0152, 'map50': 0.0152, 'num_gt': 316, 'num_pred': 70, 'num_tp': 3}`, `car`=`{'precision': 0.0819, 'recall': 0.0528, 'f1': 0.0642, 'ap': 0.0192, 'map50': 0.0192, 'num_gt': 1932, 'num_pred': 1245, 'num_tp': 102}`, `person`=`{'precision': 0.36, 'recall': 0.2435, 'f1': 0.2905, 'ap': 0.1947, 'map50': 0.1947, 'num_gt': 11004, 'num_pred': 7441, 'num_tp': 2679}`, `road_sign`=`{'precision': 0.0233, 'recall': 0.0267, 'f1': 0.0248, 'ap': 0.0048, 'map50': 0.0048, 'num_gt': 75, 'num_pred': 86, 'num_tp': 2}`
-- **conf_thr**: 0.2000
-- _source_: `results_collected/ssh9.qudata.ai/results/trafficcamnet/metrics.json`
-
-### `lprnet` @ `ssh9.qudata.ai`  (ocr)
-
-- **char_accuracy**: 0.5904
-- **full_plate_accuracy**: 0.0621
-- **char_error_rate**: 0.4096
-- **num_samples**: 4893
-- _note_: US Latin model evaluated on RU Cyrillic plates — domain gap expected
-- _source_: `results_collected/ssh9.qudata.ai/results/lprnet/metrics.json`
-
-### `nomeroff_ocr` @ `ssh9.qudata.ai`  (ocr)
-
-- **char_accuracy**: 0.9995
-- **full_plate_accuracy**: 0.9978
-- **char_error_rate**: 0.0005
-- **num_samples**: 4893
-- _note_: nomeroff-net NumberPlateTextReading direct (RU)
-- _source_: `results_collected/ssh9.qudata.ai/results/nomeroff_ocr/metrics.json`
-
+- **Корневая причина FAIL — доменный разрыв.** Модели NGC TAO (TrafficCamNet, VehicleTypeNet,
+  VehicleMakeNet, FaceNet) обучены на US/EU-данных и слабы на RU-рынке / разнородных датасетах:
+  TrafficCamNet (дорожные камеры → бортовая съёмка), VehicleTypeNet/VehicleMakeNet (US-марки и
+  суррогатные/шумные метки), Color (трудные/слитые цвета + непроверяемый маппинг меток). FAIL —
+  валидные окончательные результаты, тюнинг не применялся.
+- **Продакшн-стек RU (`nomeroff_lpd` / `nomeroff_ocr`) локально не воспроизведён** из-за упаковки:
+  `nomeroff-net` 4.0.1 ставится, но не импортируется (отсутствует `modelhub-client` на PyPI). Это
+  именно RU-ориентированная замена US-обученных LPDNet/LPRNet.
+- **Прежние удалённые результаты** (включая nomeroff PASS) хранятся в `results_collected/` (хосты
+  `qudata2`, `ssh1.qudata.ai`, `ssh9.qudata.ai`). В этой локальной кампании удалённые числа для
+  nomeroff приводятся **исключительно как ориентир** и помечены «локально НЕ воспроизведено».
+- Воспроизводимый ноутбук: `notebooks/local_validation_campaign.ipynb` (читает предвычисленные
+  `results/<model>/metrics.json`, не перезапускает модели).
