@@ -1107,6 +1107,111 @@ def eval_color(cfg: dict) -> dict:
     return result
 
 
+def parse_wider_gt(txt_path) -> dict:
+    """wider_face_val_bbx_gt.txt → {rel_path: {"boxes":[[x1,y1,x2,y2]], "attrs":[{...}]}}.
+    Поля строки: x1 y1 w h blur expression illumination invalid occlusion pose
+    (invalid стоит ПЕРЕД occlusion/pose — порядок из readme.txt). xywh→xyxy.
+    """
+    lines = Path(txt_path).read_text().splitlines()
+    entries, i = {}, 0
+    while i < len(lines):
+        name = lines[i].strip()
+        i += 1
+        if not name:
+            continue
+        n = int(lines[i].strip())
+        i += 1
+        boxes, attrs = [], []
+        count = n if n > 0 else 1          # при n==0 идёт строка-заполнитель из 10 нулей
+        for _ in range(count):
+            parts = lines[i].split()
+            i += 1
+            if n == 0:
+                continue
+            x, y, w, h = (float(v) for v in parts[:4])
+            if w <= 0 or h <= 0:
+                continue
+            boxes.append([x, y, x + w, y + h])
+            attrs.append({"blur": int(parts[4]), "invalid": int(parts[7]),
+                          "occlusion": int(parts[8])})
+        entries[name] = {"boxes": boxes, "attrs": attrs}
+    return entries
+
+
+# ─── FaceDetect (FaceNet, DetectNet_v2) ────────────────────────────────────────
+
+FACEDETECT_AUTOMOTIVE = {"14--Traffic", "5--Car_Accident", "59--people--driving--car"}
+
+
+def eval_facedetect(cfg: dict) -> dict:
+    model_path = ROOT / cfg["model_path"]
+    data_dir = ROOT / cfg["data_dir"]
+    results_dir = ROOT / cfg["results_dir"]
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    if not model_path.exists():
+        log.error(f"FaceNet ONNX unavailable: {model_path} → UNDEF")
+        return {"error": "model not found (FaceNet ONNX unavailable) → UNDEF"}
+
+    gt_txt = data_dir / "wider_face_val_bbx_gt.txt"
+    images_root = data_dir / "images"
+    if not gt_txt.exists():
+        return {"error": "dataset not found"}
+
+    gt = parse_wider_gt(gt_txt)
+    sess = get_ort_session(str(model_path))
+    input_name = sess.get_inputs()[0].name
+    H, W = 416, 736   # FaceNet вход 736×416 (W×H)
+
+    predictions, ground_truths = [], []
+    for rel, info in tqdm(gt.items(), desc="FaceDetect", unit="img"):
+        img_path = images_root / rel
+        img = cv2.imread(str(img_path))
+        if img is None:
+            continue
+        orig_h, orig_w = img.shape[:2]
+        inp = cv2.resize(img, (W, H)).astype(np.float32)
+        inp = inp[:, :, ::-1].transpose(2, 0, 1)[None] / 255.0   # BGR→RGB NCHW
+        outputs = sess.run(None, {input_name: inp})
+        cov, bbox = outputs[0][0], outputs[1][0]
+        boxes = detectnet_v2_decode(
+            cov, bbox, target_cls=0, conf_thr=0.4, stride=16, bbox_norm=35.0,
+            img_w=W, img_h=H, scale_w=orig_w / W, scale_h=orig_h / H,
+        )
+        predictions.append({"image_id": rel, "boxes": boxes})
+        ground_truths.append({"image_id": rel, "boxes": info["boxes"]})
+
+    if not predictions:
+        return {"error": "no images"}
+
+    m = compute_detection_metrics(predictions, ground_truths,
+                                  iou_threshold=0.5, conf_threshold=0.4)
+
+    def slice_metrics(cats):
+        p = [x for x in predictions if x["image_id"].split("/")[0] in cats]
+        g = [x for x in ground_truths if x["image_id"].split("/")[0] in cats]
+        return compute_detection_metrics(p, g, iou_threshold=0.5,
+                                         conf_threshold=0.4).to_dict() if p else {}
+
+    auto = slice_metrics(FACEDETECT_AUTOMOTIVE)
+
+    md = m.to_dict()
+    md["automotive_slice"] = auto
+    thresholds = {"map50": 0.50}   # консервативный headline-порог (Hard-уровень)
+    status = check_thresholds(md, thresholds)
+    status["easy_medium_hard"] = {
+        "value": None, "threshold": "Easy≥0.80/Med≥0.70/Hard≥0.50",
+        "status": "UNDEF", "note": "официальный WIDER eval_tools split недоступен локально",
+    }
+
+    result = {"metrics": md, "thresholds": status,
+              "model": "FaceNet DetectNet_v2 (face)",
+              "note": "AP@0.5 overall + automotive; Easy/Med/Hard UNDEF (нет официального split)"}
+    (results_dir / "metrics.json").write_text(json.dumps(result, indent=2))
+    log.info(f"FaceDetect: P={m.precision:.3f} R={m.recall:.3f} AP@0.5={m.map50:.3f}")
+    return result
+
+
 EVAL_CONFIGS = {
     "trafficcamnet": {
         "model_path": "models/trafficcamnet/resnet18_trafficcamnet_pruned.onnx",
@@ -1163,13 +1268,23 @@ EVAL_CONFIGS = {
         "results_dir": "results/color",
         "eval_fn": eval_color,
     },
+    "facedetect": {
+        "model_path": "models/facedetect/facenet.onnx",   # перекрывается local_paths.yaml
+        "data_dir": "data/wider_face",                      # перекрывается local_paths.yaml
+        "results_dir": "results/facedetect",
+        "eval_fn": eval_facedetect,
+    },
 }
 
 
 def check_all():
     ok = True
     for name, cfg in EVAL_CONFIGS.items():
-        model = ROOT / cfg["model_path"]
+        mp = cfg.get("model_path")
+        if mp is None:
+            print(f"{name:20s}  model:(loaded internally)")
+            continue
+        model = ROOT / mp
         data = ROOT / cfg["data_dir"]
         m_ok = "✅" if model.exists() else "❌"
         d_ok = "✅" if data.exists() else "❌"
