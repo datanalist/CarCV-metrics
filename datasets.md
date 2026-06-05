@@ -7,3 +7,20 @@ Color | MAD-Cars: Multi-view Auto Dataset | https://huggingface.co/datasets/yand
 Make | VMMRdb | https://next.ogoun.name/index.php/s/6T4zxG4eek3AdGG?dir=/DATASETS | Скачать VMMRdb.zip, разархивировать | /home/mk/Загрузки/DATASETS/VMMRdb | [vmmrdb.md](docs/about_datasets/vmmrdb.md)
 Type | Stanford Cars Dataset | https://ai.stanford.edu/~jkrause/cars/car_dataset.html | Через Kaggle | /home/mk/Загрузки/DATASETS/Stanford Cars Dataset | [stanford_cars.md](docs/about_datasets/stanford_cars.md)
 Face embedding | WIDER FACE | https://huggingface.co/datasets/CUHK-CSE/wider_face/ | Через HuggingFace | /home/mk/Загрузки/DATASETS/Wider Face/WIDER_val | [wider_face.md](docs/about_datasets/wider_face.md)
+
+---
+
+## Исследование открытых датасетов-аналогов
+
+Для каждого датасета из таблицы выше проведено исследование открытых аналогов, пригодных для **валидации** и **обучения** соответствующих моделей из [models.md](models.md). Сводка, кросс-сравнение и лицензионные риски (под коммерческий продукт) — в [docs/dataset_research/00_SUMMARY.md](docs/dataset_research/00_SUMMARY.md).
+
+| Задача | Исходный датасет | Целевая модель | Исследование аналогов |
+|---|---|---|---|
+| Detection | BDD100K | TrafficCamNet | [01_detection_bdd100k.md](docs/dataset_research/01_detection_bdd100k.md) |
+| LP Detection | autoriaNumberplateDataset-2021 | nomeroff_lpd | [02_lpd_autoria.md](docs/dataset_research/02_lpd_autoria.md) |
+| Face Detection | WIDER FACE | FaceDetect | [03_facedetect_widerface.md](docs/dataset_research/03_facedetect_widerface.md) |
+| OCR | autoriaNumberplateOcrRu-2021 | nomeroff_ocr | [04_ocr_autoria.md](docs/dataset_research/04_ocr_autoria.md) |
+| Color | MAD-Cars (Yandex) | bae_model_f3 | [05_color_madcars.md](docs/dataset_research/05_color_madcars.md) |
+| Make | VMMRdb | VehicleMakeNet | [06_make_vmmrdb.md](docs/dataset_research/06_make_vmmrdb.md) |
+| Type | Stanford Cars | VehicleTypeNet | [07_type_stanford.md](docs/dataset_research/07_type_stanford.md) |
+| Face embedding | WIDER FACE (без identity) | обучаемая (ArcFace) | [08_faceembed_widerface.md](docs/dataset_research/08_faceembed_widerface.md) |
