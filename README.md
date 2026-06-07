@@ -2,7 +2,7 @@
 
 > Репозиторий **оценки и валидации** моделей бортовой системы видеоаналитики **CarCV** (распознавание транспортных средств в реальном времени на NVIDIA Jetson Orin Nano 8GB).
 
-[![Status](https://img.shields.io/badge/Status-Validation%20Campaign-yellow)](#-результаты-валидации)
+[![Status](https://img.shields.io/badge/Campaign-2%20PASS%20%7C%204%20FAIL%20%7C%201%20UNDEF-orange)](#-результаты-валидации)
 [![Platform](https://img.shields.io/badge/Target-NVIDIA%20Jetson%20Orin%20Nano-green)](https://developer.nvidia.com/embedded/jetson-orin)
 [![Metrics](https://img.shields.io/badge/Metrics-measured%20%7C%20honest-blue)](#-результаты-валидации)
 
@@ -27,12 +27,12 @@
 
 **CarCV** — автономная бортовая система видеоаналитики реального времени: детекция ТС, распознавание номеров (LP Detection + OCR), классификация марки/типа/цвета, детекция лиц, трекинг.
 
-**CarCV-metrics** (этот репозиторий) — **не сам продукт, а его измерительный контур**: воспроизводимая валидация моделей продакшн-стека против открытых датасетов. Цель — получить **честные измеренные метрики** по каждой паре «модель × датасет» с однозначным вердиктом **PASS / FAIL**.
+**CarCV-metrics** (этот репозиторий) — **не сам продукт, а его измерительный контур**: воспроизводимая валидация моделей продакшн-стека против открытых датасетов. Цель — получить **честные измеренные метрики** по каждой паре «модель × датасет» с однозначным вердиктом **PASS / FAIL / UNDEF**.
 
 Принципы кампании:
 
 - **Источник истины по моделям** — [`models.md`](models.md); по датасетам — [`datasets.md`](datasets.md). Детальные спецификации — в [`docs/about_models/`](docs/about_models) и [`docs/about_datasets/`](docs/about_datasets).
-- **Измеренные метрики** хранятся в `results_collected/ssh9.qudata.ai/results/<model>/metrics.json`; пороги pass/fail — в `deploy/evaluation/evaluate.py` (`EVAL_CONFIGS`).
+- **Измеренные метрики** локальной кампании хранятся в `results/<model>/metrics.json` (+ `EXPERIMENT.md`), сводка — в [`results/SUMMARY.md`](results/SUMMARY.md); прежний удалённый архив qudata — в `results_collected/` (ориентир). Пороги pass/fail — в `deploy/evaluation/evaluate.py` (`EVAL_CONFIGS`).
 - **FAIL — валидный окончательный результат.** Модель не тюнингуется ради «зелёного» вердикта; провал из-за доменного разрыва фиксируется как факт о применимости.
 - **Метрики измерены на x86 GPU через ONNX Runtime** и считаются **верхней границей** точности для TensorRT-движка на Jetson.
 
@@ -89,29 +89,30 @@ Video (1080p) ─► PGIE: TrafficCamNet (детекция ТС, DeepStream/Tens
 
 ## 📊 Результаты валидации
 
-Каждая модель сопоставлена с целевым датасетом из [`datasets.md`](datasets.md). Метрики — измеренные (`metrics.json`); пороги — из `eval_*` в `deploy/evaluation/evaluate.py`.
+Каждая модель сопоставлена с целевым датасетом из [`datasets.md`](datasets.md). Метрики измерены локально (`results/<model>/metrics.json` + `EXPERIMENT.md`); пороги — из `eval_*` в `deploy/evaluation/evaluate.py`. Полная сводка — [`results/SUMMARY.md`](results/SUMMARY.md).
+
+**Итог по 7 парам:** **2 PASS / 4 FAIL / 1 UNDEF**. Четыре FAIL и UNDEF — локальная кампания (RTX 3090, onnxruntime 1.24, Python 3.13, `.venv`); **nomeroff_lpd / nomeroff_ocr — PASS на удалённом прогоне qudata** (локальный прогон блокирован упаковкой `modelhub_client`).
 
 | Модель | Задача | Датасет | Метрика (измерено) | Порог | Вердикт |
 |--------|--------|---------|---------------------|-------|---------|
-| **nomeroff_lpd** | LP Detection | AUTO.RIA Detection 2021-05-12 | P=0.9056 · R=0.9221 · F1=0.9138 | P≥0.70, R≥0.80 | ✅ **PASS** |
-| **nomeroff_ocr** | OCR | autoriaNumberplateOcrRu 2021-09-01 / val (4893) | char=0.9995 · plate=0.9978 | char≥0.90, plate≥0.80 | ✅ **PASS** |
-| **VehicleTypeNet** | Type | Stanford Cars (7483) | Top-1=0.3575 · Top-3=0.7009 | Top-1≥0.85 | ❌ **FAIL** (окончательно) |
-| **TrafficCamNet** | Detection | BDD100K | прогон TBD · *суррогат COCO: car P=0.082* | P≥0.90 R≥0.85 F1≥0.87 | ⏳ pending (суррогат FAIL) |
-| **VehicleMakeNet** | Make | VMMRdb | прогон TBD · *суррогат mad-cars: Top-1=0.083* | Top-1≥0.70 Top-3≥0.85 | ⏳ pending (суррогат FAIL) |
-| **FaceDetect** | Face Detection | WIDER FACE val (3226) | эвалуатор не реализован | AP Easy/Med/Hard · TBD | ⏳ не измерено |
-| **bae_model_f3** | Color | MAD-Cars | весов нет в репо/на NGC | — | 🚫 заблокировано |
-| **Face embedding** | — | (привязка WIDER FACE некорректна) | модели не существует | — | 🚫 вне охвата |
+| **TrafficCamNet** | Detection | BDD100K val (10 000 img) | car P=0.3909 · R=0.2584 · F1=0.3111 (conf_thr=0.2) | P≥0.90 R≥0.85 F1≥0.87 | ❌ **FAIL** |
+| **VehicleTypeNet** | Type | Stanford Cars TRAIN (7577 img; 567 пропущено) | Top-1=0.3549 · Top-3=0.6932 | Top-1≥0.85 | ❌ **FAIL** |
+| **VehicleMakeNet** | Make | VMMRdb (243 519 img, 20 марок, `skipped_ood=0`) | Top-1=0.4387 · Top-3=0.6250 | Top-1≥0.70 Top-3≥0.85 | ❌ **FAIL** |
+| **bae_model_f3** | Color | MAD-Cars (2000 dedup img, покрытие 13/15) | Top-1=0.6205 · Top-3=0.8395; best_group_min=0.4793; challenging_group_min=0.0 | overall≥0.80, best_group_min≥0.90, challenging_group_min≥0.70 | ❌ **FAIL** (осторожный) |
+| **nomeroff_lpd** | LP Detection | AUTO.RIA Detection 2021-05-12 | P=0.9056 · R=0.9221 · F1=0.9138 *(qudata)* | P≥0.70, R≥0.80 | ✅ **PASS** |
+| **nomeroff_ocr** | OCR | autoriaNumberplateOcrRu 2021-09-01 / val | char=0.9995 · plate=0.9978 *(qudata)* | char≥0.90, plate≥0.80 | ✅ **PASS** |
+| **FaceDetect** | Face Detection | WIDER FACE val | модель недоступна (FaceNet ONNX не получен; код+данные готовы) | AP@0.5≥0.50 (Easy≥0.80/Med≥0.70/Hard≥0.50) | ❓ **UNDEF** |
+
+> Пара **Face embedding** (модель `None / Trainable`) в кампанию из 7 пар не входит — измерять нечего (см. стек моделей выше).
 
 ### Что важно понимать о вердиктах
 
-- ✅ **PASS только у RU-моделей** (`nomeroff_lpd`, `nomeroff_ocr`) — они и были введены под RU/UA-домен. На тех же данных US-модели проваливаются: **US LPDNet** R=0.296, **US LPRNet** char=0.59 / plate=0.06.
-- ❌ **VehicleTypeNet — FAIL окончательно.** Stanford Cars размечен по make/model, тип кузова выведен по ключевым словам (суррогатный mapping) → доменный разрыв + шумные метки. Тюнинг не предполагается.
-- ⏳ **TrafficCamNet и VehicleMakeNet** прогонялись пока только на **суррогатах** (COCO street-level / mad-cars) и там провалились из-за доменного разрыва (US-обучение vs RU-данные / иной ракурс). Корректный прогон на BDD100K и VMMRdb — задачи кампании.
-- ⏳ **FaceDetect** — эвалуатор нужно реализовать с нуля (`.etlt` зашифрован, ONNX локально нет); самая рискованная задача, идёт последней.
-- 🚫 **Color (bae_model_f3)** — оценить нельзя: весов нет ни в репозитории, ни на NGC (лежат вне версионируемого дерева). Заявленная «0.84» — legacy, непроверена.
-- 🚫 **Face embedding** — задача-задел: модель `None (Trainable)`, измерять нечего.
+- ✅ **PASS только у RU-моделей** (`nomeroff_lpd`, `nomeroff_ocr`) — они и были введены под RU/UA-домен. На тех же данных US-модели проваливаются: **US LPDNet** R=0.296, **US LPRNet** char=0.59 / plate=0.06. Числа — с **удалённого прогона qudata** (P=0.91 / R=0.92; char 0.9995 / plate 0.9978); локально импорт пока блокирован упаковкой `modelhub_client`.
+- ❌ **Четыре FAIL измерены на целевых датасетах и окончательны.** TrafficCamNet × BDD100K (car F1=0.3111), VehicleMakeNet × VMMRdb (Top-1=0.4387), VehicleTypeNet × Stanford Cars (Top-1=0.3549), Color × MAD-Cars (Top-1=0.6205). Все **выше** прежних суррогатов (COCO car F1≈0.064, mad-cars Top-1≈0.083), но порогов не достигают; тюнинг не применялся. Корневая причина — доменный разрыв (US/EU-обучение NGC TAO + суррогатные/шумные метки).
+- ❌ **VehicleTypeNet и Color — нюансы меток.** Stanford размечен по make/model (тип кузова выведен по ключевым словам, класс `largevehicle` отсутствует) → шумные суррогатные метки (`truck` 0.6137 / `sedan` 0.2867). У Color маппинг индекс→класс (`COLOR_CLASSES`) непроверяем без оригинального файла меток — вердикт **осторожный** (cautious), не коллапс (`black` 0.897 / `white` 0.794 / `red` 0.730 узнаются уверенно).
+- ❓ **FaceDetect — UNDEF (не FAIL).** Эвалуатор `eval_facedetect` + `parse_wider_gt` **реализованы и протестированы** (13 passed), данные WIDER FACE на месте. Не измерено: deployable FaceNet ONNX недоступен (`.etlt` зашифрован, `tao_converter` не установлен, NGC ONNX → 404). Прогон стартует без изменений кода, как только появится ONNX.
 
-> Подробные таблицы метрик (per-class, контраст с US-моделями, причины FAIL) — в спецификациях моделей и в `results_collected/FINAL_REPORT.md`.
+> Подробности локальной кампании — [`results/SUMMARY.md`](results/SUMMARY.md), `results/<model>/EXPERIMENT.md` и ноутбук [`notebooks/local_validation_campaign.ipynb`](notebooks/local_validation_campaign.ipynb). Прежний удалённый отчёт — `results_collected/FINAL_REPORT.md` (архив qudata).
 
 ---
 
@@ -124,7 +125,7 @@ Video (1080p) ─► PGIE: TrafficCamNet (детекция ТС, DeepStream/Tens
 | Detection | **BDD100K** | детекция ТС (дорожная съёмка), val ~10K | UC Berkeley custom (комм. → OTL) | [📄](docs/about_datasets/bdd100k.md) |
 | LP Detection | **AUTO.RIA Numberplate 2021-05-12** | 8042 кадра, VIA-полигоны пластин | **CC BY 4.0** ✅ | [📄](docs/about_datasets/autoria_numberplate_detection_ru.md) |
 | OCR | **autoriaNumberplateOcrRu 2021-09-01** | 57 120 кропов RU-номеров (ГОСТ-Р 50577) | **CC BY 4.0** ✅ | [📄](docs/about_datasets/autoria_numberplate_ocr_ru.md) |
-| Color | **MAD-Cars (Yandex)** | 360° съёмки, 14/15 цветов | **CC BY-NC-SA 4.0** (NonCommercial) | [📄](docs/about_datasets/mad_cars.md) |
+| Color | **MAD-Cars (Yandex)** | 360° съёмки; локальный sample покрыл 13/15 цветов | **CC BY-NC-SA 4.0** (NonCommercial) | [📄](docs/about_datasets/mad_cars.md) |
 | Make | **VMMRdb** | 9170 классов make/model/year (US) | репо MIT; права на фото — TBD | [📄](docs/about_datasets/vmmrdb.md) |
 | Type | **Stanford Cars** | 16 185 изобр., 196 классов | ImageNet-like (non-commercial) | [📄](docs/about_datasets/stanford_cars.md) |
 | Face Detection | **WIDER FACE** | val 3226 изобр., AP Easy/Med/Hard | **CC BY-NC-ND 4.0** (NonCommercial) | [📄](docs/about_datasets/wider_face.md) |
@@ -154,7 +155,7 @@ NVIDIA Jetson Orin Nano 8GB  (целевое устройство продакш
 └─ Стек: JetPack 6.x · DeepStream SDK · TensorRT (FP16/INT8)
 ```
 
-> ⚠️ **Latency/FPS на Jetson в этом репозитории НЕ измерялись.** Цифры вида «8–10 ms», «30 FPS», «<50 ms» из legacy-доков — **аспирационные**. Валидация выполняется на x86 GPU (ONNX Runtime); точность ONNX = верхняя граница для TensorRT-движка. Отдельный риск — `nomeroff_lpd` (YOLOv11x, самая тяжёлая модель стека): фактическую задержку на Orin Nano необходимо измерить до продакшена.
+> ⚠️ **Latency/FPS на Jetson в этом репозитории НЕ измерялись.** Цифры вида «8–10 ms», «30 FPS», «<50 ms» из legacy-доков — **аспирационные**. Валидация выполняется на x86 GPU (ONNX Runtime); точность ONNX = верхняя граница для TensorRT-движка. Отдельный риск — `nomeroff_lpd` (YOLOv11x, самая тяжёлая модель стека): фактическую задержку на Orin Nano необходимо измерить до продакшена. NB: точность `nomeroff_lpd` подтверждена на удалённом прогоне qudata; локально импорт пока блокирован упаковкой `modelhub_client`.
 
 ---
 
@@ -181,7 +182,8 @@ python deploy/evaluation/aggregate_summary.py
 - `deploy/evaluation/evaluate.py` — эвалуаторы `eval_<model>`, препроцессинг, декодеры, пороги (`EVAL_CONFIGS`).
 - `deploy/evaluation/metrics.py` — расчёт метрик (`compute_detection_metrics`, `compute_ocr_metrics`).
 - `deploy/scripts/download_models.sh` — загрузка весов (US-модели LPDNet/LPRNet — как контрольные baseline).
-- `results_collected/.../metrics.json` — измеренные результаты; `results_collected/FINAL_REPORT.md` — сводный отчёт.
+- `results/<model>/metrics.json` (+ `EXPERIMENT.md`) — измеренные результаты локальной кампании; `results/SUMMARY.md` — сводка; `notebooks/local_validation_campaign.ipynb` — воспроизводимый ноутбук.
+- `results_collected/.../metrics.json`, `results_collected/FINAL_REPORT.md` — прежний удалённый архив qudata (ориентир).
 
 ---
 
@@ -192,6 +194,8 @@ python deploy/evaluation/aggregate_summary.py
 | [`models.md`](models.md) · [`datasets.md`](datasets.md) | Источники истины: реестр моделей и пары «модель × датасет» |
 | [`docs/about_models/`](docs/about_models) | Спецификации моделей (архитектура, препроцессинг, валидация, лицензия) |
 | [`docs/about_datasets/`](docs/about_datasets) | Спецификации датасетов (структура, аннотации, лицензия, рекомендации) |
+| [`results/SUMMARY.md`](results/SUMMARY.md) | Итоговая сводка локальной валидационной кампании — **первичный источник результатов** |
+| [`docs/model_research/00_SUMMARY.md`](docs/model_research/00_SUMMARY.md) · [`docs/dataset_research/00_SUMMARY.md`](docs/dataset_research/00_SUMMARY.md) | Исследование открытых моделей/датасетов-**аналогов**: лицензии под коммерцию, edge/domain-fit, кандидаты под дообучение (**не** измеренная валидация) |
 | [`docs/superpowers/specs/2026-06-02-validation-campaign-5-models-design.md`](docs/superpowers/specs/2026-06-02-validation-campaign-5-models-design.md) | Дизайн валидационной кампании на 5 моделей |
 | [`docs/architecture.md`](docs/architecture.md) | Архитектура системы (**legacy-стек**, читать с поправкой на актуальный `models.md`) |
 | [`docs/system-design/ML_System_Design_Document.md`](docs/system-design/ML_System_Design_Document.md) | ML System Design (требования §5–6; **legacy-метрики непроверены**) |
@@ -200,18 +204,19 @@ python deploy/evaluation/aggregate_summary.py
 
 ## 🧭 Статус кампании и дальнейшие шаги
 
-**Закрыто (измерено, вердикт зафиксирован):**
+**Закрыто (вердикт зафиксирован):**
 
-- [x] `nomeroff_lpd` → AUTO.RIA Detection — **PASS** (P=0.91 / R=0.92)
-- [x] `nomeroff_ocr` → autoriaNumberplateOcrRu/val — **PASS** (char 0.9995 / plate 0.9978)
-- [x] `VehicleTypeNet` → Stanford Cars — **FAIL** (Top-1 0.358), окончательно
+- [x] `nomeroff_lpd` → AUTO.RIA Detection — **PASS** (P=0.9056 / R=0.9221, qudata)
+- [x] `nomeroff_ocr` → autoriaNumberplateOcrRu/val — **PASS** (char=0.9995 / plate=0.9978, qudata)
+- [x] `TrafficCamNet` → BDD100K val — **FAIL** (car F1=0.3111)
+- [x] `VehicleMakeNet` → VMMRdb — **FAIL** (Top-1=0.4387)
+- [x] `VehicleTypeNet` → Stanford Cars — **FAIL** (Top-1=0.3549), окончательно
+- [x] `bae_model_f3` (Color) → MAD-Cars — **FAIL** осторожный (Top-1=0.6205)
 
-**В работе / запланировано:**
+**Открытая работа:**
 
-- [ ] `TrafficCamNet` → перегон на **настоящем BDD100K val** (загрузчик + конверсия меток BDD → 4 класса)
-- [ ] `VehicleMakeNet` → перегон на **VMMRdb** (загрузчик каталогов-классов `make_model_year`, mapping 20 марок)
-- [ ] `FaceDetect` → реализовать эвалуатор `eval_facedetect` с нуля (экспорт `.etlt`→ONNX, AP Easy/Med/Hard)
-- [ ] `bae_model_f3` (Color) → легализовать веса и завести Color-эвалуатор, **либо** обучить кастомный 15-классовый классификатор на MAD-Cars `color`
+- [ ] `FaceDetect` → получить deployable FaceNet ONNX (`tao_converter` / NGC) и запустить уже готовый `eval_facedetect` (сейчас **UNDEF**)
+- [ ] `nomeroff_lpd` / `nomeroff_ocr` → снять блокер `modelhub_client` и **локально воспроизвести** удалённый PASS qudata
 - [ ] Синхронизировать расхождения версий в `models.md` (TrafficCamNet/Make/Type) с фактически загружаемыми
 
 ---
@@ -222,4 +227,4 @@ Proprietary © 2026 CARS Team. Лицензии моделей и датасет
 
 ---
 
-**Версия README:** 2.0.0 · **Обновлён:** 2026-06-04 · приведён в соответствие со спецификациями `docs/about_models/` и `docs/about_datasets/` (актуальный RU-стек, измеренные метрики, честные вердикты PASS/FAIL).
+**Версия README:** 3.1.0 · **Обновлён:** 2026-06-07 · итог **2 PASS / 4 FAIL / 1 UNDEF** (вердикты PASS / FAIL / UNDEF). 4 FAIL + 1 UNDEF — локальная кампания [`results/SUMMARY.md`](results/SUMMARY.md) (RTX 3090); nomeroff_lpd/ocr PASS — на удалённом прогоне qudata (в SUMMARY помечены DEFERRED как локально не воспроизведённые).
